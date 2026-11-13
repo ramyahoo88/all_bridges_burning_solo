@@ -1,6 +1,8 @@
-# Claude audit handoff · All Bridges Burning Solo Companion v0.10.0
+# Audit handoff · All Bridges Burning Solo Companion v0.10.2
 
-Build date November 13, 2026. Audit the HTML in the source archive against the downloaded HTML. The file is `All_Bridges_Burning_Solo.html`, SHA-256 `6179a1cddf216650c6a0cf35ab8a4b735d57542aad945d636c6efc1918268691`. Build with `node build.mjs`, verify `sha256sum -c SHA256SUMS`, and run `node --test test/*.test.mjs`. `docs/Rules_and_Sources.md` provides the rule-to-code map and source fingerprints.
+Build with `node build.mjs`, verify `sha256sum -c SHA256SUMS`, and run `node --test test/*.test.mjs`. The checksum corresponds to the checked-in `All_Bridges_Burning_Solo.html`. [Rules and sources](docs/Rules_and_Sources.md) lists the rule mappings and source fingerprints.
+
+Claude's [v0.10.1 report](docs/Claude_Audit_v0.10.1.md) preserves the independent findings and that release's checksum. The original v0.10.0 handoff is in the repository history at `57a99a0`.
 
 ## Reproduce against the shipped UI
 
@@ -18,7 +20,7 @@ Use **Campaigns → Import save → Resume**. Each import is a new copy.
 | `saves/08-pending-manifesto.json` | The bot placed a Moderates Cell in Tampere and awaits the human Reds placement. Helsinki is ineligible at Active Support. Keep the draft Häme choice, or select another eligible space and reopen. Apply to place the Cell, add the political cube, and record only the Moderates Event. Boxed #7 and §5.1. |
 | `saves/09-upgrade-preview.json` | Resume the imported v0.9 open preview. Confirm the notice requests a fresh preview and there is no Apply button until you generate one. The human Pass and the seed survive. |
 
-## Confirmed defects found during implementation
+## Regression checks from earlier releases
 
 | Defect | Regression to rerun |
 |---|---|
@@ -33,14 +35,23 @@ Use **Campaigns → Import save → Resume**. Each import is a new copy.
 
 The photos supplied both sides of the boxed aid. Source fingerprints and rule decisions are in `docs/Rules_and_Sources.md`. The photos can be supplied alongside the archive for the rules audit.
 
-## Open rules questions
+## v0.10.1 audit follow-up
 
-1. Review the boxed reverse beside the physical Event cards. Compare #10 and #13 placement, #20 and #21 removal or relocation, #27 and #41 the free strength modifier, #39 and #45 the failed blocking opener, #40 casualties, and #42 Capability allocation.
-2. Check #42 where two Towns can be taken, where three Cells only suffice by losing an existing Town, and where two valid plans differ in Capability allocation. The test suite covers the Population and control gates. The aid's Capability tie-breaker is implemented as local allocation among the winning plan's donors and destinations.
-3. Recheck #59’s pre-Command Prepare and Foreign Relations, #53’s Senate Population threshold, and end-of-game Agitation when several factions approach their victory thresholds.
-4. Compare Train positions, rail-border geometry, and same-origin group splits with the physical board and §§3.2.4–5. The app models Trains by space. Use the tabletop workflow for a decision that depends on a specific rail slot.
-5. Audit News carrier identity in crowded spaces and the choice between forced movement, handover, and Capture. The app stores a holder faction and space.
-6. Check Android Downloads and a physical game through the first Propaganda Round. The verification used offline Chromium with phone and desktop viewports.
+| Finding | Status in v0.10.2 |
+|---|---|
+| #20 News and Moderates Agitation | Fixed and covered by regression tests. |
+| #25 Russian Troops | The printed card targets all Troops in the selected space. The aid requires at least one replacement. §1.4.2 governs any excess Troops. |
+| #27 and #41 Attack Strength | Both printed cards grant the additional free Strength. Tests cover a seeded roll and the resulting Strength. |
+| #7 last placement fallback | Use the card's mandatory placement and the general non-player tie procedure after the three listed aid tiers are exhausted. |
+| Underfunded Personality ransom | Transfer up to three existing Resources. This reading treats payment as a consequence of removal. A direct ruling on the shortfall remains unavailable. |
+
+The prior Event, Capability allocation and Senate Command decisions are recorded in [Rules and sources](docs/Rules_and_Sources.md). The reference saves and browser suite can be reused on this release.
+
+## Open playtest checks
+
+1. Compare Train slots, rail-border geometry and complex group splits with the physical board and §§3.2.4–5. Use tabletop entry for choices tied to a printed rail slot.
+2. Check particular News carriers in crowded spaces during movement, handover and Capture. The app tracks News by holder faction and space.
+3. Check Android Downloads and play through the first Propaganda Round on a physical board. Browser verification used Linux Chromium with phone and desktop viewports.
 
 ## Optional usability ideas
 

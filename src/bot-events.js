@@ -113,13 +113,12 @@ function joblessness(g,f,log) {
   adjustResource(g,'m',-3);
   return true;
 }
-function removable(g,id,side,{allowPersonality=false}={}) {
+function removable(g,id,side,tokoiActor=null) {
   const b=g.board[id], count=cells(b,side);
   if(count!==1) return count>0;
-  if(side==='m') {
-    if(b.person&&!allowPersonality) return false;
-  } else if(b[side+'Prep']||b.caps[side].length) return false;
-  return !newsAt(g,id,side).length||side==='m'&&allowPersonality;
+  if(side==='m'?b.person&&!tokoiActor:b[side+'Prep']||b.caps[side].length) return false;
+  if(!newsAt(g,id,side).length) return true;
+  return side==='m'&&tokoiActor!==null&&cells(b,tokoiActor)>0;
 }
 function tokoi(g,f,log) {
   const enemy=f==='r'?'s':'r', choices=[];
@@ -127,7 +126,7 @@ function tokoi(g,f,log) {
     const b=g.board[id];
     if(b[enemy+'Prep']) choices.push({id,key:enemy+'Prep',rank:[1,0,0]});
     for(const side of [enemy,'m']) {
-      if(!removable(g,id,side,{allowPersonality:true})) continue;
+      if(!removable(g,id,side,f)) continue;
       const key=side+(side==='m'?(b.mI?'I':'A'):(b[side+'A']?'A':'I'));
       const gain=control(b)!==f&&control({...b,[key]:b[key]-1})===f;
       if(gain||side===enemy&&cells(b,side)===1) choices.push({id,key,rank:[gain?0:1,-pop(id)*Number(gain),-Number(key===enemy+'A'||key==='mI')]});
@@ -169,8 +168,11 @@ function disarm(g,f,log) {
       return [-Number(control(b)!=='s'&&control(placedChange(b,'s',Math.min(b.u,available)))==='s'),-b.u];
     },log,'#25 · Replace Russian Troops where Reds and Senate coexist');
     if(!id) return false;
-    placeCells(g,id,'s',g.board[id].u);
-    g.board[id].u=0;
+    const b=g.board[id], troops=b.u;
+    const replaced=placeCells(g,id,'s',troops);
+    // Once the aid's replacement gate is met, §1.4.2 removes any troops without a replacement.
+    b.u=0;
+    if(replaced<troops) log.push('#25 · Return '+(troops-replaced)+' additional Russian Troop(s) to Available (§1.4.2).');
     return true;
   }
   if(!human(g,'s')) return false;

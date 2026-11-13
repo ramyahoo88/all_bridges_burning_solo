@@ -1,4 +1,4 @@
-# All Bridges Burning Solo Companion v0.10.1
+# All Bridges Burning Solo Companion v0.10.2
 
 Audit build dated November 13, 2026. This offline companion follows the November 2023 GMT Living Rules and Living Playbook, plus the boxed Solitaire Play Aid, for the single published campaign. It supports Reds, Senate, or Moderates as the lone human, and all three two-human combinations with the remaining faction run by the app. Bring the physical Event cards and boxed Solitaire Play Aid.
 
@@ -11,7 +11,7 @@ Audit build dated November 13, 2026. This offline companion follows the November
 5. Correct a space from Board or from a checklist entry. Undo and Redo use the named action and also show the physical adjustments.
 6. Export the active campaign or all campaigns from Campaigns. An export includes unfinished decisions and the deterministic random stream. Imports create copies.
 
-Resume pending choices when upgrading from v0.9 or v0.10.0. Generate a fresh preview before applying a pending action. New campaigns use the printed Random Spaces Map. Older campaigns keep the published uniform-die option for space ties.
+Resume pending choices when upgrading from v0.9 or v0.10.x. Generate a fresh preview before applying a pending action. New campaigns use the printed Random Spaces Map. Older campaigns keep the published uniform-die option for space ties.
 
 On Android, save the HTML to Downloads, then use a browser or file manager that opens local HTML with JavaScript. The chat preview, some Android file viewers, and some browser file origins handle storage or downloads differently. If your device cannot run or persist the downloaded file, open it on desktop or serve it over a local network while both devices are on that network. A physical Android device was unavailable for verification.
 
@@ -37,7 +37,7 @@ To reproduce the interface checks, install Playwright for Python and its Chromiu
 - [Coverage](docs/Coverage.md)
 - [Release notes](docs/Release_Notes.md)
 - [Validation results](docs/Validation.md)
-- [v0.10.0 audit handoff](CLAUDE_AUDIT.md)
+- [Audit handoff and follow-up](CLAUDE_AUDIT.md)
 - [Claude audit of v0.10.1](docs/Claude_Audit_v0.10.1.md)
 - [Representative campaign saves](saves/)
 

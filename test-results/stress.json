@@ -1,7 +1,7 @@
 {
   "stats": {
     "campaigns": 288,
-    "steps": 50446,
+    "steps": 50447,
     "phaseII": 254,
     "finalRound": 199,
     "manualEvents": 371,
@@ -20,7 +20,7 @@
     {
       "humans": "s",
       "campaigns": 48,
-      "steps": 8098,
+      "steps": 8099,
       "phaseII": 45,
       "finalRound": 31
     },

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {SPACE_IDS} from '../src/data.js';
+import {SPACE_IDS, pop} from '../src/data.js';
 import {addNews, clone, control, pools, score} from '../src/model.js';
 import {preview} from '../src/engine.js';
 import {prepare} from '../src/bot-rally.js';
@@ -81,6 +81,17 @@ test('#7 and §5.1: place the Moderates Cell first and wait for a human Reds pla
   assert.equal(after.board.ham.rI,1);
   assert.equal(after.tracks.sC,1);
   assert.deepEqual(after.actions,[{f:'m',action:'event'}]);
+});
+test('#7: when the three bot tiers are empty, place the required Cell in a remaining legal space',()=>{
+  const g=turn(7,'m',['r'],1);
+  for(const id of SPACE_IDS.filter(id=>pop(id)>0)) g.board[id].support=2;
+  const p=bot(g).after;
+  const selected=SPACE_IDS.find(id=>p.board[id].mI===1);
+  assert.equal(pop(selected),0);
+  assert.equal(p.interrupt.f,'r');
+  const result=resolve(p,{space:selected});
+  assert.equal(result.board[selected].rI,1);
+  assert.equal(result.tracks.rC+result.tracks.sC,1);
 });
 
 test('#10: require two Available Moderates Cells and respect Active Support',()=>{
@@ -184,6 +195,31 @@ test('#20: a legal removal that gains Control outranks a last opposing Cell or P
   assert.equal(q.board.tam.sI,0);
   assert.equal(q.board.hel.sPrep,1);
 });
+test('#20 preserves held News when the executing faction has only an Administration',()=>{
+  const g=turn(20,'r',['s']);
+  Object.assign(g.board.tam,{admin:1,mI:1});
+  addNews(g,'tam','m');
+  const rejected=bot(g).after;
+  assert.notEqual(rejected.actions[0].action,'event');
+  assert.equal(rejected.board.tam.mI,1);
+  assert.deepEqual(rejected.news,g.news);
+  g.board.tam.rI=1;
+  g.board.tam.network=1;
+  const transferred=bot(g).after;
+  assert.equal(transferred.actions[0].action,'event');
+  assert.equal(transferred.board.tam.mI,0);
+  assert.deepEqual(transferred.news,[{id:1,space:'tam',owner:'r'}]);
+});
+test('#20 Personality ransom still removes the Cell when Moderates can only pay two Resources',()=>{
+  const g=turn(20,'s',['r']);
+  Object.assign(g.board.tam,{sI:1,mI:1,person:true});
+  g.tracks.m=2;
+  const p=bot(g).after;
+  assert.equal(p.actions[0].action,'event');
+  assert.equal(p.board.tam.person,false);
+  assert.equal(p.tracks.m,0);
+  assert.equal(p.tracks.s,0);
+});
 
 test('#21: an Administration may come from Active Opposition when Available is empty',()=>{
   const g=turn(21,'r');
@@ -237,6 +273,19 @@ test('#25: Senate requires a Russian Troop with both factions; Reds must remove 
   red.humans=['m'];
   assert.notEqual(bot(red).after.actions[0].action,'event');
 });
+test('#25 and §1.4.2: one replacement meets the gate, then excess Russian Troops return to Available',()=>{
+  const g=turn(25,'s',['r']);
+  Object.assign(g.board.vii,{sI:1,rI:1,u:3});
+  g.tracks.sOut=18;
+  const p=bot(g);
+  assert.equal(p.after.actions[0].action,'event');
+  assert.deepEqual([p.after.board.vii.u,p.after.board.vii.sI,pools(p.after).u,p.after.tracks.rV],[0,2,3,3]);
+  assert(p.log.some(line=>line.includes('2 additional Russian Troop')));
+  g.tracks.sOut=19;
+  const noReplacement=bot(g).after;
+  assert.notEqual(noReplacement.actions[0].action,'event');
+  assert.equal(noReplacement.board.vii.u,3);
+});
 
 test('#27: reach a qualifying Capability target, preserve populated origin Control, then roll the Attack',()=>{
   const g=turn(27,'r',['s']);
@@ -252,6 +301,7 @@ test('#27: reach a qualifying Capability target, preserve populated origin Contr
   assert.equal(p.after.board.hel.sI,0);
   assert.equal(p.after.tracks.sPow,1);
   assert(p.log.some(line=>line.includes('Attack in Helsinki')));
+  assert(p.log.some(line=>line.includes('Strength 8')));
 });
 
 test('#28 and §6.5.1: resume a human prisoner decision before tallying Polarization and rolling Resources',()=>{
@@ -466,17 +516,28 @@ test('Boxed front, §6.4.2: Senate avoids a partial reduction, Reds skip a parti
   assert.equal(q.tracks.pol,6);
   assert.deepEqual(reds,before);
 });
-test('Boxed front, §6.4.2: Moderates skip unreachable reductions and shift a chosen space to Neutral',()=>{
+test('Boxed front, §6.4.2: Moderates skip unreachable reductions and stop the Opposition priority at nine or less',()=>{
   const g=turn(47,'m',['r']);
   g.stage='propaganda'; g.round=4; g.roundStep='agitate-2';
   Object.assign(g.tracks,{pol:4,m:15});
   Object.assign(g.board.hel,{mI:1,support:-2});
   for(const id of ['tam','tur','vii']) g.board[id].support=-2;
   const p=preview(g,{type:'propaganda'}).after;
-  assert.deepEqual([p.tracks.pol,p.board.hel.support,score(p).opp],[4,0,6]);
+  assert.deepEqual([p.tracks.pol,p.board.hel.support,score(p).opp],[4,-1,8]);
   g.tracks.pol=2;
   const reachable=preview(g,{type:'propaganda'}).after;
   assert.deepEqual([reachable.tracks.pol,reachable.board.hel.support,score(reachable).opp],[1,-2,10]);
+});
+test('Moderates Agitation leaves unused spaces for Politics once the Opposition threshold is met',()=>{
+  const g=turn(46,'m',['r']);
+  g.stage='propaganda'; g.round=3; g.roundStep='agitate-2';
+  Object.assign(g.board.hel,{mI:1,support:-2});
+  Object.assign(g.board.tam,{mI:1,support:-2});
+  for(const id of ['tur','vii']) g.board[id].support=-2;
+  const after=preview(g,{type:'propaganda'}).after;
+  assert.equal(after.board.hel.support,-1);
+  assert.equal(after.board.tam.support,-2);
+  assert.equal(after.tracks.rC+after.tracks.sC,1);
 });
 
 test('Boxed front, §8.1.9: distribute Trains by group and put Senate Train with Jaeger first',()=>{
@@ -603,6 +664,16 @@ test('#41: the Senate Attack branch keeps German Troops outside its selected def
   const p=bot(g).after;
   assert.deepEqual([p.board.uus.sI,p.board.uus.g,p.tracks.sPow],[0,3,1]);
   assert.equal(p.sabotage.length,4);
+});
+test('#41: the shaded Event adds its free two points to the Reds bot Attack Strength',()=>{
+  const g=turn(41,'r',['s']);
+  Object.assign(g.board.uus,{rI:3,sI:3,sPrep:1});
+  g.sabotage=['ham/tam','hel/uus','kar/vii','poh/vaa'];
+  g.rng=seedFor(5);
+  const p=bot(g);
+  assert.equal(p.after.actions[0].action,'event');
+  assert(p.log.some(line=>line.includes('Strength 5; hits')));
+  assert.equal(p.after.board.uus.sI,0);
 });
 
 test('#45: a last-campaign Senate still has a legal shift at German Vassalage zero',()=>{

@@ -199,6 +199,15 @@ test('§3.2.3 and §8.1.2: Moderates ransom paid to a human; no Reds bot Resourc
     assert.equal(g.tracks.r,human?7:0);
   }
 });
+test('§§1.5 and 3.2.3: an underfunded Personality ransom transfers only available Resources',()=>{
+  for(const available of [0,2]) {
+    const g=position();
+    g.tracks.m=available;
+    Object.assign(g.board.hel,{rA:1,mI:1,person:true});
+    terrorAt(g,'hel','r',terrorOptions(g,'hel','r')[0]);
+    assert.deepEqual([g.board.hel.mI,g.board.hel.person,g.tracks.m,g.tracks.r],[0,false,0,4+available]);
+  }
+});
 test('§3.2.4 and Playbook p.18: roll 3 yields Available/POW/Available, one attrition, News, and Terror',()=>{
   const g=position({phase:2,humans:['s']});
   Object.assign(g.board.ham,{sI:4,rA:1,rI:3,admin:1});

@@ -138,10 +138,11 @@ function botAgitate(g,f,log) {
   if(last&&t.m>=15&&t.pol-score(g).politics<=candidates.length) {
     actPol(()=>t.pol-score(g).politics,'Moderates Agitation: lower Polarization toward Issues + Networks + 1');
   }
-  while(score(g).opp>=10) {
+  for(let opposition=score(g).opp;opposition>=10;opposition=score(g).opp) {
     const id=pickSpace((b,id)=>b.support<0&&pop(id)>0,id=>[-pop(id)*-g.board[id].support],'Moderates Agitation: reduce Reds Opposition');
     if(!id) break;
-    g.board[id].support=0;
+    const b=g.board[id], steps=Math.ceil((opposition-9)/pop(id));
+    b.support=Math.min(0,b.support+steps);
     use(id);
   }
   if(!last&&!g.issues.every(Boolean)) for(const id of candidates.filter(id=>!used.has(id))) {
