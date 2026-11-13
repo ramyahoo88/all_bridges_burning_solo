@@ -1,0 +1,8 @@
+{
+  "name": "all-bridges-burning-companion",
+  "version": "0.10.1",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "build": "node build.mjs", "test": "node --test test/*.test.mjs" }
+}

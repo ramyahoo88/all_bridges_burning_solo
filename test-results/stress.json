@@ -1,0 +1,56 @@
+{
+  "stats": {
+    "campaigns": 288,
+    "steps": 50446,
+    "phaseII": 254,
+    "finalRound": 199,
+    "manualEvents": 371,
+    "manualRevolts": 0,
+    "eventChoices": 30,
+    "checkpoints": 2337
+  },
+  "rows": [
+    {
+      "humans": "r",
+      "campaigns": 48,
+      "steps": 8246,
+      "phaseII": 45,
+      "finalRound": 33
+    },
+    {
+      "humans": "s",
+      "campaigns": 48,
+      "steps": 8098,
+      "phaseII": 45,
+      "finalRound": 31
+    },
+    {
+      "humans": "m",
+      "campaigns": 48,
+      "steps": 9613,
+      "phaseII": 48,
+      "finalRound": 47
+    },
+    {
+      "humans": "r+s",
+      "campaigns": 48,
+      "steps": 5620,
+      "phaseII": 24,
+      "finalRound": 3
+    },
+    {
+      "humans": "r+m",
+      "campaigns": 48,
+      "steps": 9661,
+      "phaseII": 46,
+      "finalRound": 44
+    },
+    {
+      "humans": "s+m",
+      "campaigns": 48,
+      "steps": 9208,
+      "phaseII": 46,
+      "finalRound": 41
+    }
+  ]
+}

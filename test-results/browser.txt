@@ -1,0 +1,16 @@
+PASS phone file:// offline · setup, human, bot, deterministic preview reload, Apply, board, Undo/Redo, correction
+Chromium 153.0.8010.0
+PASS desktop file:// offline · pending Event export/import/reload, schema migration, corrupt import, pending News
+Chromium 153.0.8010.0
+PASS phone file:// offline · Hennala preview/reload/Apply/Undo/Redo, saved Manifesto choice, v0.9 preview refresh
+Chromium 153.0.8010.0
+PASS all nine reference campaign saves through import, preview and continuation
+Chromium 153.0.8010.0
+PASS phone file:// offline · Train Attack controls, local Cells, Capabilities and carried News
+Chromium 153.0.8010.0
+PASS phone controls · quota, unavailable writes, export unsaved work, recover a corrupt primary, archived bytes and notice hit test
+Chromium 153.0.8010.0
+PASS two live file:// tabs · stale save warning and explicit reload
+Chromium 153.0.8010.0
+PASS app-deck setup through real controls for all six published configurations
+Chromium 153.0.8010.0
