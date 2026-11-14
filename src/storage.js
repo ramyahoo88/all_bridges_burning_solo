@@ -8,8 +8,13 @@ export const STORAGE_KEY='abb-companion.campaigns';
 export const BACKUP_KEY=STORAGE_KEY+'.backup';
 export const REJECTED_KEY=STORAGE_KEY+'.rejected';
 export const MAX_CAMPAIGNS=250;
+export const MAX_SAVE_BYTES=64_000_000;
+const BACKUP_PART_BYTES=16_000_000;
 const HISTORY_LIMIT=30;
 const TYPE='all-bridges-burning';
+const encoder=new TextEncoder();
+export const utf8Bytes=raw=>encoder.encode(raw).byteLength;
+const exceedsSaveLimit=raw=>raw.length>MAX_SAVE_BYTES||(raw.length*3>MAX_SAVE_BYTES&&utf8Bytes(raw)>MAX_SAVE_BYTES);
 const id=()=>globalThis.crypto?.randomUUID?.()??('abb-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
 const isPlainObject=value=>Boolean(value)&&typeof value==='object'&&!Array.isArray(value);
 const isInt=(value,min,max)=>Number.isInteger(value)&&value>=min&&value<=max;
@@ -68,9 +73,44 @@ export function checkpointCampaign(entry,label) {
 export function encode(collection) {
   return JSON.stringify({type:TYPE,schema:SCHEMA,version:VERSION,...collection});
 }
-export function encodeCampaign(entry) {return encode({active:entry.id,campaigns:[entry]});}
+export function encodeCampaign(entry) {
+  const raw=encode({active:entry.id,campaigns:[entry]});
+  if(exceedsSaveLimit(raw)) throw Error('This campaign exceeds the '+MAX_SAVE_BYTES/1_000_000+' MB import limit.');
+  return raw;
+}
+export function encodeBackupParts(collection) {
+  // Measure each campaign once, then assemble complete schema-2 files.
+  const entries=collection.campaigns.map(campaign=>{
+    const raw=JSON.stringify(campaign);
+    return {id:campaign.id,raw,bytes:utf8Bytes(raw)};
+  });
+  const header=active=>{
+    const {savedAt,exportedAt}=collection;
+    return encode({active,savedAt,exportedAt,campaigns:[]}).slice(0,-2);
+  };
+  // Reserve enough room for any valid active ID, including the first ID of a new part.
+  const longestId=entries.reduce((longest,item)=>item.id.length>(longest?.length??0)?item.id:longest,null);
+  const overhead=utf8Bytes(header(longestId))+2;
+  const parts=[];
+  let batch=[], bytes=overhead;
+  const finishPart=()=>{
+    const active=batch.some(item=>item.id===collection.active)?collection.active:batch[0].id;
+    const raw=header(active)+batch.map(item=>item.raw).join(',')+']}';
+    parts.push({raw,bytes:utf8Bytes(raw),campaigns:batch.length});
+    batch=[];
+    bytes=overhead;
+  };
+  for(const item of entries) {
+    if(item.bytes+overhead>MAX_SAVE_BYTES) throw Error('A campaign exceeds the '+MAX_SAVE_BYTES/1_000_000+' MB import limit. Export other campaigns individually.');
+    if(batch.length&&bytes+1+item.bytes>BACKUP_PART_BYTES) finishPart();
+    bytes+=Number(batch.length>0)+item.bytes;
+    batch.push(item);
+  }
+  if(batch.length) finishPart();
+  return parts;
+}
 export function decode(raw,{onDraftRecovery}={}) {
-  if(typeof raw!=='string'||raw.length>16_000_000) throw Error('Save is missing or too large.');
+  if(typeof raw!=='string'||exceedsSaveLimit(raw)) throw Error('Save is missing or too large.');
   const saved=JSON.parse(raw,(key,value)=>{
     if(['__proto__','prototype','constructor'].includes(key)) throw Error('Invalid save field.');
     return value;
@@ -304,7 +344,7 @@ export function importCopies(collection,incoming) {
   return {...collection,active:copies[index]?.id??copies[0]?.id??collection.active,campaigns:[...collection.campaigns,...copies]};
 }
 export function campaignSizes(collection) {
-  return collection.campaigns.map(c=>[c.name,new TextEncoder().encode(JSON.stringify(c)).length]).sort((a,b)=>b[1]-a[1]);
+  return collection.campaigns.map(c=>[c.name,utf8Bytes(JSON.stringify(c))]).sort((a,b)=>b[1]-a[1]);
 }
 const isQuota=error=>['QuotaExceededError','NS_ERROR_DOM_QUOTA_REACHED'].includes(error?.name);
 export function createStore(getStorage,locks) {
@@ -351,13 +391,14 @@ export function createStore(getStorage,locks) {
     catch {return false;}
   }
   async function save(collection,{recover=false}={}) {
-    const raw=encode(collection);
     try {
+      const raw=encode(collection);
       return await serialize(()=>{
         const storage=getStorage();
         if(storage.getItem(STORAGE_KEY)!==expected) return {status:'conflict',backup:backupStatus(storage)};
         if(rejected&&!recover) return {status:'recovery',backup:backupStatus(storage)};
         if(raw===expected) return {status:'saved',backup:backupStatus(storage)};
+        if(exceedsSaveLimit(raw)) return {status:'full',backup:backupStatus(storage)};
         if(rejected) storage.setItem(REJECTED_KEY,rejected);
         const oldBackup=storage.getItem(BACKUP_KEY);
         try {

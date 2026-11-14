@@ -1,4 +1,4 @@
-# All Bridges Burning Solo Companion v0.10.4
+# All Bridges Burning Solo Companion v0.10.6
 
 This offline companion follows the November 2023 GMT Living Rules and Living Playbook, plus the boxed Solitaire Play Aid, for the single published campaign. It supports Reds, Senate, or Moderates as the lone human, and all three two-human combinations with the remaining faction run by the app. Bring the physical Event cards and boxed Solitaire Play Aid.
 
@@ -9,9 +9,9 @@ This offline companion follows the November 2023 GMT Living Rules and Living Pla
 3. On Turn, check the estimated costs and available pieces, then Preview and Apply. Use the checkable or printable tabletop checklist to match the physical board.
 4. When the app requests a tabletop procedure, resolve it from the card or play aid. Enter the final counts and tracks for affected spaces. Finish any free actions in their printed order before recording the parent Event. Leave the eligibility cylinder in the parent Event box.
 5. Filter Board by occupied spaces, last step, nearby spaces, factions, or News. Correct a space from Board or the checklist. Undo and Redo show the physical adjustments.
-6. Rename, duplicate, or export saved campaigns from Campaigns. Imports create copies. The app can resume a valid game when an unfinished form contains damaged fields.
+6. Rename, duplicate, or export saved campaigns from Campaigns. Imports create copies and require room in the workspace. For a large collection, **Export all** gives you numbered backup files. Download every part and import them one at a time when restoring the collection.
 
-Resume pending choices when upgrading from v0.9 or v0.10.x. Generate a fresh preview before applying a pending action. New campaigns use the printed Random Spaces Map. Older campaigns keep the published uniform-die option for space ties.
+Resume pending choices when upgrading from v0.9 or v0.10.x, including either v0.10.5 build. Generate a fresh preview before applying a pending action. New campaigns use the printed Random Spaces Map. Older campaigns keep the published uniform-die option for space ties.
 
 On Android, save the HTML to Downloads, then use a browser or file manager that opens local HTML with JavaScript. The chat preview, some Android file viewers, and some browser file origins handle storage or downloads differently. If your device cannot run or persist the downloaded file, open it on desktop or serve it over a local network while both devices are on that network. A physical Android device was unavailable for verification.
 
@@ -40,7 +40,7 @@ To reproduce the interface checks, install Playwright for Python and its Chromiu
 - [Audit handoff and follow-up](CLAUDE_AUDIT.md)
 - [Claude audit of v0.10.1](docs/Claude_Audit_v0.10.1.md)
 - [Astra audit of v0.10.2](docs/Astra_Audit_v0.10.2.md)
-- [Astra second audit of v0.10.4](docs/Astra_Audit_v0.10.4.md) · five actionable issues, two rules questions, and reproducible evidence; application unchanged.
+- [Astra second audit of v0.10.4](docs/Astra_Audit_v0.10.4.md) · findings addressed in v0.10.6
 - [Astra comparison of the v0.10.5 candidates](docs/Astra_v0.10.5_Comparison.md)
 - [Representative campaign saves](saves/)
 

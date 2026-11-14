@@ -18,6 +18,20 @@ export function begin(seed=4,humans=['r'],mode='physical') {
   g=preview(g,{type:'start',current:3,upcoming:4}).after;
   return preview(g,{type:'enter'}).after;
 }
+export function senateMarchPosition({converging=false}={}) {
+  const g=position({humans:['r','m'],phase:2,current:32,upcoming:33});
+  Object.assign(g,{round:2,rng:4,eligible:['r','m','s'],actions:[{f:'r',action:'limited'},{f:'m',action:'pass'}]});
+  g.board.mik.sI=4;
+  g.board.mik.caps.s=['train'];
+  g.sabotage=['ham/mik'];
+  if(converging) {
+    for(const id of ['tam','tur','vaa','vii']) g.board[id].sI=1;
+    g.board.kar.sI=4;
+  } else {
+    g.board.uus.sA=4;
+  }
+  return g;
+}
 export class MemoryStorage {
   data=new Map();
   quota=Infinity;

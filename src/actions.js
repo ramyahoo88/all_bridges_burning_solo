@@ -1,4 +1,4 @@
-import { FACTIONS, NEAR, RAIL, edge, spaceName} from './data.js';
+import {FACTIONS, NAME, NEAR, RAIL, capabilityName, edge, spaceName} from './data.js';
 import {addNews, capacity, cells, clamp, cleanSpace, clone, countTerror, flip, human, newsAt, pay, pools} from './model.js';
 import {chooseSpaceRanked, pick, roll} from './random.js';
 
@@ -6,15 +6,23 @@ export const enemy = f=>FACTIONS.filter(other=>other!==f);
 export function createMoveState() {
   return {fromUsed:new Set(),toUsed:new Set(),movedInto:{}};
 }
-export const unmovedCount = (b,movedInto,id,key)=>Math.max(0,b[key]-(movedInto[id]?.[key]??0));
+export const unmovedCount = (b,movedInto,id,key)=>Math.max(0,b[key]-(movedInto?.[id]?.[key]??0));
 export const unmovedCells = (b,movedInto,id,f='m')=>unmovedCount(b,movedInto,id,f+'A')+unmovedCount(b,movedInto,id,f+'I');
+export function unmovedCapabilities(b,movedInto,id,f) {
+  const arrivals={...movedInto?.[id]?.capabilities};
+  return b.caps[f].filter(cap=>{
+    if(!arrivals[cap]) return true;
+    arrivals[cap]--;
+    return false;
+  });
+}
 export function recordMovedInto(movedInto,id,key,count=1) {
   if(count<=0) return;
   const arrivals=movedInto[id]??={};
   arrivals[key]=(arrivals[key]??0)+count;
 }
-export function recordGroupMove(tracker,from,to,{allowSharedDest=false}={}) {
-  if(tracker.fromUsed.has(from)||tracker.toUsed.has(from)||(!allowSharedDest&&(tracker.fromUsed.has(to)||tracker.toUsed.has(to)))) {
+export function recordGroupMove(tracker,from,to,{allowMultipleGroups=false}={}) {
+  if(!allowMultipleGroups&&[from,to].some(id=>tracker.fromUsed.has(id)||tracker.toUsed.has(id))) {
     throw Error('Enter each movement group once and use each destination once. Record mixed or converging groups in the tabletop editor.');
   }
   tracker.fromUsed.add(from);
@@ -111,6 +119,11 @@ export function putCube(g,side) {
   g.tracks[side+'C']++;
   return true;
 }
+export function politicalCubeChoices(g) {
+  if(g.issues.every(Boolean)) return [];
+  const available=pools(g);
+  return ['r','s'].filter(side=>available[side+'C']>0);
+}
 export function legalRail(g,from,to) {
   return RAIL.includes(edge(from,to))&&!g.sabotage.includes(edge(from,to));
 }
@@ -120,23 +133,39 @@ function carryNews(g,f,from,to) {
 }
 export function travel(g,f,from,to,opts,tracker=null) {
   const b=g.board[from], d=g.board[to], count=opts.count;
-  if(!NEAR[from]?.includes(to)||!Number.isInteger(count)||count<1||count>cells(b,f)) throw Error('Select an adjacent destination and an available group.');
-  if(tracker) recordGroupMove(tracker,from,to,{allowSharedDest:Boolean(opts.allowSharedDest)});
-  const inactive=opts.activeFirst?Math.max(0,count-b[f+'A']):Math.min(count,b[f+'I']);
+  if(!NEAR[from]?.includes(to)||!Number.isInteger(count)||count<1) throw Error('Select an adjacent destination and an available group.');
+  const movedInto=tracker?.movedInto;
+  const availableActive=unmovedCount(b,movedInto,from,f+'A');
+  const availableInactive=unmovedCount(b,movedInto,from,f+'I');
+  if(count>availableActive+availableInactive) throw Error('Select an available group that has not moved.');
+  const movingCaps=opts.caps??[];
+  const availableCaps=unmovedCapabilities(b,movedInto,from,f);
+  for(const cap of movingCaps) {
+    if(cap==='train'&&!legalRail(g,from,to)) throw Error('A Train needs an unsabotaged railway across that border.');
+    const index=availableCaps.indexOf(cap);
+    if(index<0) throw Error('The selected Capability is unavailable for this move.');
+    availableCaps.splice(index,1);
+  }
+  if(tracker) recordGroupMove(tracker,from,to,{allowMultipleGroups:opts.allowMultipleGroups});
+  const inactive=opts.activeFirst?Math.max(0,count-availableActive):Math.min(count,availableInactive);
   const active=count-inactive;
   b[f+'I']-=inactive;
   d[f+'I']+=inactive;
   b[f+'A']-=active;
   d[f+'A']+=active;
-  const russian=f==='r'?Math.min(opts.russian??0,b.u,count):0;
+  const russian=f==='r'?Math.min(opts.russian??0,unmovedCount(b,movedInto,from,'u'),count):0;
   b.u-=russian;
   d.u+=russian;
-  for(const cap of opts.caps??[]) {
-    if(cap==='train'&&!legalRail(g,from,to)) throw Error('A Train needs an unsabotaged railway across that border.');
-    const index=b.caps[f].indexOf(cap);
-    if(index<0) throw Error('The selected Capability is unavailable.');
-    b.caps[f].splice(index,1);
+  for(const cap of movingCaps) {
+    b.caps[f].splice(b.caps[f].indexOf(cap),1);
     d.caps[f].push(cap);
+  }
+  if(movedInto) {
+    recordMovedInto(movedInto,to,f+'I',inactive);
+    recordMovedInto(movedInto,to,f+'A',active);
+    recordMovedInto(movedInto,to,'u',russian);
+    const arrivals=(movedInto[to].capabilities??={});
+    for(const cap of movingCaps) arrivals[cap]=(arrivals[cap]??0)+1;
   }
   carryNews(g,f,from,to);
   cleanSpace(g,from);
@@ -175,27 +204,47 @@ export function resolveMessageMove(g,log,step,movedInto={}) {
   cleanSpace(g,from);
   return {to,captured,status};
 }
-function capStrength(caps) {
-  const officer=caps.includes('officer-s');
-  return caps.map(cap=>cap==='officer-s'?2:cap==='officer-r'?1:officer?2:1).sort((a,b)=>b-a).slice(0,2).reduce((sum,n)=>sum+n,0);
+function capabilityModifiers(caps,f) {
+  const points=f==='s'&&caps.includes('officer')?2:1;
+  // Show the Jaeger first, since it also boosts the other Capability used.
+  const ordered=[...caps].sort((a,b)=>Number(b==='officer')-Number(a==='officer'));
+  return ordered.slice(0,2).map(cap=>[capabilityName(cap,f),points]);
 }
-const capSide = (list,f)=>list.map(cap=>cap==='officer'?'officer-'+f:cap);
-export function battleStrength(g,{f,id,defenders,attackCount,russians=0,caps=null,boost=0,bot=!human(g,f)}) {
+export function battleStrengthDetails(g,{f,id,defenders,attackCount,russians=0,caps=null,boost=0,bot=!human(g,f)}) {
   const b=g.board[id];
   const russianWeight=g.tracks.rV>=2?2:1;
-  const offense=f==='g'?b.g*2:bot?(f==='s'?7:5):Number(attackCount>=3);
-  let strength=offense+boost+russians*russianWeight;
-  if(f!=='g') strength+=capStrength(capSide(caps??b.caps[f],f));
+  const modifiers=[];
+  if(f==='g') modifiers.push([b.g+' German Troops',b.g*2]);
+  else if(bot) modifiers.push([NAME[f]+' base',f==='s'?7:5]);
+  else modifiers.push([attackCount+' attacking Cells',Number(attackCount>=3)]);
+  if(russians) modifiers.push([russians+' attacking Russian Troops',russians*russianWeight]);
+  if(f!=='g') modifiers.push(...capabilityModifiers(caps??b.caps[f],f));
+  if(boost) modifiers.push(['Boost',boost]);
   for(const target of defenders) {
-    if(target==='g') strength-=b.g*2;
-    if(target==='u') strength-=b.u*russianWeight;
-    if(target==='r'||target==='s') strength-=b[target+'Prep']*2+capStrength(capSide(b.caps[target],target));
+    if(target==='g'&&b.g) modifiers.push([b.g+' defending German Troops',-b.g*2]);
+    if(target==='u'&&b.u) modifiers.push([b.u+' defending Russian Troops',-b.u*russianWeight]);
+    if(target==='r'||target==='s') {
+      if(b[target+'Prep']) modifiers.push([NAME[target]+' Prepared',-2*b[target+'Prep']]);
+      for(const [name,points] of capabilityModifiers(b.caps[target],target)) {
+        modifiers.push([NAME[target]+' '+name,-points]);
+      }
+    }
   }
-  return f==='g'?Math.max(2,strength):strength;
+  let strength=modifiers.reduce((sum,[,points])=>sum+points,0);
+  if(f==='g'&&strength<2) {
+    modifiers.push(['German minimum',2-strength]);
+    strength=2;
+  }
+  const breakdown=modifiers.map(([name,points])=>name+' '+(points>=0?'+':'')+points).join(', ');
+  return {strength,breakdown};
+}
+export function battleStrength(g,options) {
+  return battleStrengthDetails(g,options).strength;
 }
 export function engage(g,log,{f,id,defenders,attackCount,russians=0,caps=null,boost=0,retreat=null,die=null,bot=!human(g,f),activeFirst=false,casualty='active',attrition='inactive',attackerInactive=null,casualtyLimit=Infinity}) {
   const b=g.board[id];
-  const strength=battleStrength(g,{f,id,defenders,attackCount,russians,caps,boost,bot});
+  let attackU=f==='r'?Math.min(russians,b.u):0;
+  const {strength,breakdown}=battleStrengthDetails(g,{f,id,defenders,attackCount,russians:attackU,caps,boost,bot});
   const attackingInactive=f==='g'?0:attackerInactive!==null?attackerInactive:activeFirst?Math.max(0,attackCount-b[f+'A']):Math.min(attackCount,b[f+'I']);
   let attackI=attackingInactive, attackA=attackCount-attackI;
   if(f!=='g'&&attackI>0) {
@@ -204,7 +253,7 @@ export function engage(g,log,{f,id,defenders,attackCount,russians=0,caps=null,bo
     attackA++;
   }
   const result=die??roll(g,log,'Attack in '+spaceName(id));
-  log.push(spaceName(id)+' · Strength '+strength+'; '+(result===6?'6 always fails':result<=strength?'hits':'misses'));
+  log.push(spaceName(id)+' · Strength '+strength+'; '+(result===6?'6 always fails':result<=strength?'hits':'misses')+' · '+breakdown);
   if(result===6||result>strength) return;
   const cf=defenders.find(side=>side==='r'||side==='s');
   const tf=defenders.find(side=>side==='g'||side==='u');
@@ -243,14 +292,26 @@ export function engage(g,log,{f,id,defenders,attackCount,russians=0,caps=null,bo
     attackI-=other;
   };
   if(f!=='g') {
-    attackerLoss(Math.min(troopsLost,attackCount));
-    if(f==='r') b.u-=Math.min(b.u,russians,Math.max(0,troopsLost-attackCount));
+    let takeCell=true;
+    for(let loss=0;loss<troopsLost;loss++) {
+      const hasCell=attackA+attackI>0;
+      if(hasCell&&(takeCell||!attackU)) {
+        attackerLoss(1);
+        takeCell=false;
+      } else if(attackU) {
+        b.u--;
+        attackU--;
+        takeCell=true;
+      } else break;
+    }
     attackerLoss(Math.min(Math.floor(casualties/3),attackA+attackI));
   }
   if(prison) {
     const side=f==='g'?'s':f;
-    if(countTerror(b)<2&&pools(g)[side+'Terror']>0) b[side+'Terror']++;
-    g.tracks.pol=clamp(g.tracks.pol+1,0,10);
+    if(countTerror(b)<2&&pools(g)[side+'Terror']>0) {
+      b[side+'Terror']++;
+      g.tracks.pol=clamp(g.tracks.pol+1,0,10);
+    }
     addNews(g,id);
   }
   cleanSpace(g,id);

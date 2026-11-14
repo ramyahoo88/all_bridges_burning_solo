@@ -1,4 +1,4 @@
-# Automation coverage · v0.10.4
+# Automation coverage · v0.10.6
 
 | Procedure | Coverage | At the table |
 |---|---|---|
@@ -6,7 +6,7 @@
 | Event deck, priority, and eligibility | Automatic with physical input option | In physical mode enter each revealed card ID. Move the cylinders and cards to match the action record. |
 | Bot mini-decks and Special Activities | Automatic with an optional tabletop mode for Commands | Review the card draw, conditions, priorities, and targets. For a map situation that depends on a particular Train slot, use **Tabletop resolution option**, follow the named bot card, and keep any shown condition roll. |
 | Human Commands and Special Activities | Guided in the app or at the table | Enter spaces, pieces and Special Activity timing. The form estimates costs and shows candidate spaces. Preview checks the full action. For complex actions, select **Resolve with the physical faction aid**, then enter the outcome. |
-| March and Attack | Guided human actions, automated bot actions on space-level geometry | Choose origins, destinations, pieces, and moving Capabilities. In a Train Attack, select any Cells or Russian Troops already at the target that will join. Use the physical aid for a Train's precise rail slot, complex splits, or particular participating Capabilities the form cannot express. |
+| March and Attack | Guided human actions, automated bot actions on space-level geometry | Choose origins, destinations, pieces, and moving Capabilities. A full Senate #59 can split or converge March groups. Attack previews show the Strength modifiers and resulting losses. Use the physical aid for precise Train slots, complex human group splits, or particular participating Capabilities the form cannot express. |
 | Moderates Message and News | Automatic bot Message, guided human Message and saved follow-up | Enter a path and any carrier choice. Use the physical aid for a particular carrier in a stack, capture ties, or moves the form cannot express. Human News use remains optional and paid. |
 | Bot Events | Automatic for boxed priorities, with prompted human choices and a guided fallback | Review the Event side and resolution. For #7, #28, or #34, make the human choice at the prompt and copy each applied step. Other sides reached through general Event priorities can open a tabletop form. |
 | Human Events | Selected sides automatic, remaining sides guided | Read the chosen side of the physical card. When prompted, resolve its steps in printed order, including any free action granted to another faction, then record the result. |
@@ -14,7 +14,7 @@
 | Red Revolt and Capabilities | Automatic trigger, bot Reds choice, and Power adjustment. Guided human choices | Apply the Reds step first, then place Capabilities and adjust Power totals. A human Reds player chooses the Rally or removal, and a human faction chooses among its eligible Capability spaces. |
 | Propaganda and scoring | Automatic order, bot decisions, and arithmetic. Guided human decisions | Apply each phase. Enter human choices for Issues, leadership, Agitation, or prisoners. Keep eligibility from the preceding Event. |
 | Board correction | Guided final counts | Open the affected space, enter final counts and markers, and add any other spaces. Update both ends of a move plus relevant tracks and off-board boxes. Preview then Apply. |
-| Campaign recovery | Automatic save with explicit recovery tools | Use the same file path and browser for local progress. Export before moving devices or replacing a download. Campaigns shows backup status and sizes. Restore a checkpoint or previous save, or export current in-memory progress. |
+| Campaign recovery | Automatic save with explicit recovery tools | Use the same file path and browser for local progress. Campaigns shows saved and in-memory progress. Export before moving devices or replacing a download. Keep every numbered backup part and import the parts individually. |
 
 ## Entering a tabletop result
 

@@ -1,6 +1,6 @@
 import {BORDERS, EVENTS, FACTIONS, LABEL, MOOD, NAME, NEAR, SPACE_IDS, TOWNS, borderName, eventName, pop, spaceName, town} from './data.js';
 import {capacity, cells, clone, control, countActive, personality, pools} from './model.js';
-import {battleStrength, legalRail, rallySize, terrorOptions} from './actions.js';
+import {battleStrengthDetails, legalRail, politicalCubeChoices, rallySize, terrorOptions} from './actions.js';
 import {legalCommands, legalSpecials, recycle, redsAgitation} from './human.js';
 
 export const escape = value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
@@ -135,10 +135,11 @@ export function rowHelperText(g,f,cmd,row) {
     const caps=moving?[...target.caps[f],...movingCaps]:movingCaps.length?movingCaps:src.caps[f];
     const attackCount=count+(moving?Number(row.localCount)||0:0);
     const russians=(Number(row.russian)||0)+(moving?Number(row.localRussian)||0:0);
-    const strength=battleStrength(g,{f,id:row.to,defenders,attackCount,russians,caps,boost:Number(row.boost)||0,bot:false});
+    const {strength,breakdown}=battleStrengthDetails(g,{f,id:row.to,defenders,attackCount,russians,caps,boost:Number(row.boost)||0,bot:false});
     const rowCost=(row.from===row.to?1:Math.ceil(count/3))+(Number(row.boost)||0);
     const railHint=moving&&!legalRail(g,row.from,row.to)?' · No usable rail link':moving&&!movingCaps.includes('train')?' · Select a Train to move':'';
-    return 'Origin '+spaceName(row.from)+': '+src[f+'A']+' active, '+src[f+'I']+' inactive'+(f==='r'?', '+src.u+' Russian':'')+' · Estimated Strength '+strength+' · Cost '+rowCost+railHint;
+    return 'Origin '+spaceName(row.from)+': '+src[f+'A']+' active, '+src[f+'I']+' inactive'+(f==='r'?', '+src.u+' Russian':'')+
+      ' · Estimated Strength '+strength+' ('+breakdown+') · Cost '+rowCost+railHint;
   }
   if(cmd==='March'&&g.board[row.from]) {
     const src=g.board[row.from], count=Math.max(1,Number(row.count)||1);
@@ -258,10 +259,16 @@ function specialFields(g,f,s,base) {
   if(selected==='Dialogue') return select('Space',base+'.id',s.id,spaceOptions(),{empty:'Choose space'})+
     select('Dialogue option',base+'.option',s.option,[['shift','Shift toward Neutral'],['replace','Replace an Inactive Cell']],{refresh:true})+
     (s.option==='replace'?select('Enemy faction',base+'.side',s.side,sides(['r','s'])):'');
-  if(selected==='Personality') return select('Personality option',base+'.option',s.option,[['place','Place in a Town'],...(g.phase===2?[['earn','Use News to gain Resources'],['lower','Use News to lower Polarization']]:[])],{refresh:true})+
-    select('Space',base+'.id',s.id,spaceOptions(s.option==='place'?TOWNS:SPACE_IDS),{empty:'Choose space'})+
-    (s.option!=='place'?select('Held News',base+'.token',s.token,g.news.filter(x=>x.owner==='m').map(x=>[x.id,'News '+x.id+' · '+spaceName(x.space)]),{empty:'Choose News',number:true})+
-    select('Place cube',base+'.side',s.side,cubeOptions):'');
+  if(selected==='Personality') {
+    const choices=politicalCubeChoices(g);
+    const option=select('Personality option',base+'.option',s.option,[['place','Place in a Town'],...(g.phase===2?[['earn','Use News to gain Resources'],['lower','Use News to lower Polarization']]:[])],{refresh:true});
+    const space=select('Space',base+'.id',s.id,spaceOptions(s.option==='place'?TOWNS:SPACE_IDS),{empty:'Choose space'});
+    if(s.option==='place') return option+space;
+    const news=select('Held News',base+'.token',s.token,g.news.filter(x=>x.owner==='m').map(x=>[x.id,'News '+x.id+' · '+spaceName(x.space)]),{empty:'Choose News',number:true});
+    const cube=choices.length?select('Place cube',base+'.side',s.side,cubeOptions.filter(([side])=>choices.includes(side))):
+      '<p class="quiet">Use News for the selected reward. The Political Display is unavailable.</p>';
+    return option+space+news+cube;
+  }
   return '';
 }
 const specialDefaults={Prepare:'marker',Personality:'place',Dialogue:'shift','Foreign Relations':'raise'};

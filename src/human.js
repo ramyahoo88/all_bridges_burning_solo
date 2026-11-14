@@ -1,6 +1,6 @@
 import {BORDERS, COMMANDS, NEAR, SPECIALS, SPACE_IDS, pop, spaceName, town} from './data.js';
 import { adjustResource, cells, cleanSpace, control, flip, newsAt, personality, pay, pools} from './model.js';
-import {createMoveState, engage, enemy, legalRail, placeCells, putCube, rallySize, recordGroupMove, recordMovedInto, replaceWithDisc, resolveMessageMove, terrorAt, terrorOptions, travel, unmovedCells, unmovedCount} from './actions.js';
+import {createMoveState, engage, enemy, legalRail, placeCells, politicalCubeChoices, putCube, rallySize, recordGroupMove, recordMovedInto, replaceWithDisc, resolveMessageMove, terrorAt, terrorOptions, travel, unmovedCells, unmovedCount} from './actions.js';
 import { roll} from './random.js';
 
 const requireThat=(check,message)=>{if(!check) throw Error(message);};
@@ -102,7 +102,9 @@ function resolveSpecial(g,f,log,spec,movedInto) {
     } else {
       const token=g.news.find(n=>n.id===Number(spec.token));
       requireThat(g.phase===2&&token?.space===id&&token.owner==='m'&&b?.person&&b.mI,'Select held News with the Personality and an Underground Moderates Cell.');
-      requireThat(putCube(g,spec.side),'Choose an available cube for the Political Display.');
+      const cubeChoices=politicalCubeChoices(g);
+      const side=cubeChoices.length===1?cubeChoices[0]:spec.side;
+      if(cubeChoices.length) requireThat(putCube(g,side),'Choose an available cube for the Political Display.');
       g.news=g.news.filter(n=>n.id!==token.id);
       const value=roll(g,log,'Personality uses News');
       if(spec.option==='lower') t.pol=Math.max(0,t.pol-Math.ceil(value/2));

@@ -2,6 +2,9 @@
 import argparse
 import json
 from pathlib import Path
+import subprocess
+import tempfile
+from time import perf_counter
 
 from playwright.sync_api import expect, sync_playwright
 
@@ -586,13 +589,141 @@ def recover_draft(browser, uri):
     print("PASS malformed draft import and startup recovery, preserved pending game, and cleared Issue after navigation")
 
 
+def repair_fixtures(kind, directory):
+    subprocess.run(["node", str(ROOT / "test/repair-fixtures.mjs"), kind, str(directory)], check=True)
+
+
+def march_continuation(browser, uri):
+    ctx, page, errors, requests = new_page(browser, uri, mobile=True)
+    with tempfile.TemporaryDirectory(prefix="abb-march-") as temp:
+        directory = Path(temp)
+        repair_fixtures("march", directory)
+        import_save(page, directory / "march.json")
+    button(page, "Resume").click()
+    expect(page.get_by_role("status").filter(has_text="Review a fresh preview")).to_be_visible()
+    before = state(page)
+    assert not button(page, "Apply").count()
+    button(page, "Preview Senate bot").click()
+    expect(page.locator("#preview-panel h2")).to_have_text("Senate · March + Prepare")
+    decision_log = page.locator('#preview-panel details[data-detail-key="preview-log"]')
+    if not decision_log.evaluate("(details)=>details.open"):
+        decision_log.locator("summary").click()
+    expect(decision_log).to_contain_text("Uusimaa → Helsinki")
+    saved(page)
+    page.reload()
+    expect(page.locator("#preview-panel h2")).to_have_text("Senate · March + Prepare")
+    assert state(page)["game"] == before["game"]
+    button(page, "Apply").click()
+    saved(page)
+    board = state(page)["game"]["board"]
+    assert [board["hel"]["sA"], board["hel"]["sI"], board["uus"]["sA"], board["uus"]["sI"]] == [3, 0, 1, 3]
+    assert board["uus"]["caps"]["s"] == ["train"] and board["hel"]["caps"]["s"] == []
+    assert not state(page)["game"]["sabotage"]
+    expect(page.locator("#tabletop-checklist")).to_contain_text("Senate March")
+    expect(page.locator("#tabletop-checklist")).to_contain_text("v0.10.6")
+    page.locator('[data-action="undo"]').click()
+    saved(page)
+    assert state(page)["game"] == before["game"]
+    page.get_by_text("Tabletop resolution option", exact=True).click()
+    page.get_by_label("Resolve a bot Command using the boxed card").check()
+    button(page, "Preview Senate bot").click()
+    expect(page.locator("#preview-panel h2")).to_contain_text("#59 March")
+    button(page, "Apply").click()
+    saved(page)
+    guided = state(page)["game"]
+    assert guided["interrupt"]["scope"] == "bot-command"
+    assert guided["board"] == before["game"]["board"]
+    assert guided["sabotage"] == before["game"]["sabotage"]
+    assert not errors and not requests, (errors, requests)
+    ctx.close()
+    print("PASS #59 continuation, v0.10.5 preview refresh, reload, Apply, Undo and tabletop mode")
+
+
+def import_at_capacity(browser, uri):
+    ctx, page, errors, requests = new_page(browser, uri)
+    with tempfile.TemporaryDirectory(prefix="abb-capacity-") as temp:
+        directory = Path(temp)
+        repair_fixtures("capacity", directory)
+        raw = (directory / "full.json").read_text()
+        page.evaluate("([key,raw])=>localStorage.setItem(key,raw)", [KEY, raw])
+        page.reload()
+        go(page, "Campaigns")
+        expect(page.locator(".campaign-row")).to_have_count(250)
+        page.locator("#import-file").set_input_files(directory / "older.json")
+        expect(page.locator("#error-note")).to_contain_text("250 campaigns")
+        expect(page.locator(".campaign-row")).to_have_count(250)
+        assert page.evaluate("key=>localStorage.getItem(key)", KEY) == raw
+        current = json.loads(raw)["campaigns"][0]
+        row = page.locator(".campaign-row").filter(has=page.get_by_text("Existing campaign", exact=True))
+        with page.expect_download() as export:
+            row.get_by_role("button", name="Export", exact=True).click()
+        exported = json.loads(Path(export.value.path()).read_bytes())["campaigns"][0]
+        assert exported["id"] == current["id"]
+        assert exported["game"]["tracks"]["r"] == 12
+        assert exported["draft"]["boardFilter"] == "Häme"
+    assert not errors and not requests, (errors, requests)
+    ctx.close()
+    print("PASS a same-ID older export preserves the current campaign and draft at the 250-campaign limit")
+
+
+def split_backups(browser, uri):
+    ctx, page, errors, requests = new_page(browser, uri)
+    with tempfile.TemporaryDirectory(prefix="abb-backup-") as temp:
+        directory = Path(temp)
+        repair_fixtures("backups", directory)
+        source = directory / "campaigns.json"
+        original = json.loads(source.read_text())["campaigns"]
+        for total in (80,160):
+            page.locator("#import-file").set_input_files(source)
+            expect(page.locator(".campaign-row")).to_have_count(total,timeout=30000)
+        expect(page.locator("#save-status")).to_have_text("Storage full · unsaved",timeout=30000)
+        started = perf_counter()
+        button(page, "Export all").click()
+        expect(button(page, "Download part 1 of 2")).to_be_visible()
+        preparation = perf_counter() - started
+        exported = []
+        payload = []
+        for part in (1,2):
+            with page.expect_download() as download:
+                button(page, f"Download part {part} of 2").click()
+            path = directory / download.value.suggested_filename
+            download.value.save_as(path)
+            assert path.stat().st_size <= 16_000_000
+            exported.append(path)
+            payload.extend(json.loads(path.read_text())["campaigns"])
+        for actual, expected in zip(payload,original*2,strict=True):
+            assert {k:v for k,v in actual.items() if k!="id"} == {k:v for k,v in expected.items() if k!="id"}
+        assert len({campaign["id"] for campaign in payload}) == 160
+
+        # Reload clears the unsaved collection. Restore each downloaded file through the app.
+        page.reload()
+        expect(page.locator(".campaign-row")).to_have_count(0)
+        count=0
+        for path in exported:
+            count += len(json.loads(path.read_text())["campaigns"])
+            page.locator("#import-file").set_input_files(path)
+            expect(page.locator(".campaign-row")).to_have_count(count,timeout=30000)
+        assert count == 160
+        expect(page.locator("#save-status")).to_have_text("Storage full · unsaved",timeout=30000)
+        first = page.locator(".campaign-row").filter(has=page.get_by_text("Häme and Tampere", exact=True)).first
+        with page.expect_download() as download:
+            first.get_by_role("button",name="Export",exact=True).click()
+        restored = json.loads(Path(download.value.path()).read_bytes())["campaigns"][0]
+        assert restored["draft"]["boardFilter"] == "Häme"
+        assert restored["undo"] == original[0]["undo"]
+        total_bytes = sum(path.stat().st_size for path in exported)
+    assert not errors and not requests, (errors, requests)
+    ctx.close()
+    print(f"PASS exported and restored 160 campaigns in two JSON files ({total_bytes:,} bytes), prepared in {preparation:.2f} s")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--html", type=Path, default=ROOT / "All_Bridges_Burning_Solo.html")
     parser.add_argument("--chromium", help="Chromium executable. Defaults to Playwright Chromium.")
     parser.add_argument("--headless-shell", action="store_true", help="Use single-process flags for a constrained headless shell.")
     parser.add_argument("--screenshots", type=Path)
-    parser.add_argument("--case", choices=["all", "vertical", "imports", "aid-events", "reference-saves", "train-attack", "recovery", "tabs", "configs", "quality-of-life", "recover-draft"], default="all")
+    parser.add_argument("--case", choices=["all", "vertical", "imports", "aid-events", "reference-saves", "train-attack", "recovery", "tabs", "configs", "quality-of-life", "recover-draft", "march-continuation", "import-at-capacity", "split-backups"], default="all")
     args = parser.parse_args()
     if args.screenshots:
         args.screenshots.mkdir(parents=True, exist_ok=True)
@@ -610,6 +741,9 @@ def main():
         "configs": configurations,
         "quality-of-life": lambda browser, uri: quality_of_life(browser, uri, args.screenshots),
         "recover-draft": recover_draft,
+        "march-continuation": march_continuation,
+        "import-at-capacity": import_at_capacity,
+        "split-backups": split_backups,
     }
     uri = args.html.resolve().as_uri()
     with sync_playwright() as playwright:

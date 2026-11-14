@@ -156,8 +156,8 @@ export function botPersonality(g,log) {
   const site=personality(g);
   if(g.phase===2&&site&&g.board[site].mI) {
     const news=newsAt(g,site,'m')[0];
-    const cube=news?cubeColor(g,log,'equal'):null;
-    if(news&&cube&&putCube(g,cube)) {
+    if(news) {
+      if(!g.issues.every(Boolean)) putCube(g,cubeColor(g,log,'equal'));
       g.news=g.news.filter(n=>n.id!==news.id);
       const result=roll(g,log,'Personality uses News');
       if(score(g).politics>=3) g.tracks.pol=Math.max(0,g.tracks.pol-Math.ceil(result/2));

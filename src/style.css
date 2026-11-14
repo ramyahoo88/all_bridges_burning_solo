@@ -190,6 +190,8 @@ details[open] > summary { margin-bottom: .32rem; }
   .controls .primary { flex-grow: 1; }
   .coverage > div { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
   .coverage p { grid-column: 1/-1; font-size: .86rem; }
+  .change { grid-template-columns: minmax(0,1fr) 1rem minmax(0,1fr); }
+  .change > :first-child { grid-column: 1/-1; }
   .campaign-row { display: block; }
   .campaign-row .controls { margin-top: .4rem; }
   footer { font-size: .73rem; }

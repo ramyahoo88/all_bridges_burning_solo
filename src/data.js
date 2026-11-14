@@ -1,9 +1,10 @@
-export const VERSION = '0.10.4';
+export const VERSION = '0.10.6';
 export const FACTIONS = ['r', 's', 'm'];
 export const NAME = {r:'Reds', s:'Senate', m:'Moderates', g:'Germany', u:'Russia'};
 export const TYPES = ['cannon','train','officer'];
 export const CAP_STOCK = {officer:4,cannon:2,train:2};
 export const CAP_NAME = {cannon:'Cannon',train:'Train',officer:'Commander / Jaeger'};
+export const capabilityName = (cap,f) => cap==='officer'?(f==='r'?'Commander':'Jaeger'):CAP_NAME[cap];
 export const MARK = ['rA','rI','sA','sI','mA','mI','admin','network','u','g','rPrep','sPrep','rTerror','sTerror'];
 export const LABEL = {
   rA:'Active Reds',rI:'Inactive Reds',sA:'Active Senate',sI:'Inactive Senate',

@@ -69,7 +69,7 @@ export function chooseRanked(state,items,ranking,log,label,describe=String,break
   }
   return item;
 }
-function compareRank(a,b) {
+export function compareRank(a,b) {
   for(let i=0;i<a.length;i++) if(a[i]!==b[i]) return a[i]-b[i];
   return 0;
 }

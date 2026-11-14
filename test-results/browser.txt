@@ -18,3 +18,9 @@ PASS phone controls · live estimates, focus, board filters, saved checklist, pr
 Chromium 153.0.8010.0
 PASS malformed draft import and startup recovery, preserved pending game, and cleared Issue after navigation
 Chromium 153.0.8010.0
+PASS #59 continuation, v0.10.5 preview refresh, reload, Apply, Undo and tabletop mode
+Chromium 153.0.8010.0
+PASS a same-ID older export preserves the current campaign and draft at the 250-campaign limit
+Chromium 153.0.8010.0
+PASS exported and restored 160 campaigns in two JSON files (16,533,400 bytes), prepared in 0.57 s
+Chromium 153.0.8010.0

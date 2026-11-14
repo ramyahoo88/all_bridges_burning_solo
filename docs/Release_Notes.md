@@ -1,4 +1,18 @@
-# Release notes · v0.10.4
+# Release notes · v0.10.6
+
+## Changes since v0.10.4
+
+This build integrates the combat and interface improvements from Gemini's v0.10.5 submission into the v0.10.4 source, with additional repairs from the [comparison audit](Astra_v0.10.5_Comparison.md).
+
+- When German defenders inflict attrition, alternate participating Reds Cells and Russian Troops while both are available. The bot chooses the group first on #52, #53, and #58. Bot Train Attacks count eligible pieces at the destination, and Attack previews explain each Strength modifier.
+- A full #59 can send multiple groups from one origin and bring groups from different origins into the same destination. The bot may use original pieces from a space that received arrivals earlier in the Command. Each piece moves at most once.
+- **Export all** splits a large workspace into numbered JSON files using UTF-8 sizes. Imports create new campaign copies and stop before changing the workspace if the combined count would exceed 250. Import accepts individual files up to 64 MB. Restored collections can exceed a browser's local storage quota. Export any progress marked unsaved before closing the app.
+- The tabletop checklist identifies the campaign and uses the faction's Capability names.
+- The app allows the Personality News effect when no political cube can be placed. Imprisonment increases Polarization when it also places a Terror marker. The [rules notes](Rules_and_Sources.md) record both readings and their sources.
+
+Schema 2 and the reference saves carry forward. Generate a fresh preview for any pending action from an earlier app version.
+
+## v0.10.4 integration
 
 November 13, 2026. This build integrates Gemini's v0.10.3 changes onto the v0.10.2 repository and addresses the nine findings in the [Astra audit](Astra_Audit_v0.10.2.md).
 

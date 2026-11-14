@@ -1,4 +1,4 @@
-import {BORDERS, CAP_NAME, CAP_STOCK, EVENTS, FACTIONS, LABEL, MARK, MOOD, NAME, PROPAGANDA, SALT, SPACES, SPACE_IDS, TYPES, borderName, pop, spaceName, town} from './data.js';
+import {BORDERS, CAP_NAME, CAP_STOCK, EVENTS, FACTIONS, LABEL, MARK, MOOD, NAME, PROPAGANDA, SALT, SPACES, SPACE_IDS, TYPES, borderName, capabilityName, pop, spaceName, town} from './data.js';
 import {roll, shuffle} from './random.js';
 
 export const clone = value=>structuredClone(value);
@@ -218,20 +218,23 @@ function describeValue(key,value) {
   return String(value);
 }
 const sides = f=>NAME[f]??'Uncontrolled';
-const capText = list=>list.map(key=>CAP_NAME[key]).join(', ')||'—';
+const capText = (list,f)=>list.map(key=>capabilityName(key,f)).join(', ')||'—';
 const newsText = list=>list.map(n=>'#'+n.id+' '+(n.owner?NAME[n.owner]:'unheld')).join(', ')||'—';
 export function boardDiff(before,after) {
   const spaces=[];
   for(const id of SPACE_IDS) {
     const a=before.board[id],b=after.board[id],rows=[];
     for(const k of [...MARK,'person','support']) if(a[k]!==b[k]) rows.push([LABEL[k],describeValue(k,a[k]),describeValue(k,b[k])]);
-    for(const f of ['r','s']) if(capText(a.caps[f])!==capText(b.caps[f])) rows.push([NAME[f]+' Capabilities',capText(a.caps[f]),capText(b.caps[f])]);
+    for(const f of ['r','s']) {
+      const beforeCaps=capText(a.caps[f],f), afterCaps=capText(b.caps[f],f);
+      if(beforeCaps!==afterCaps) rows.push([NAME[f]+' Capabilities',beforeCaps,afterCaps]);
+    }
     const old=newsText(newsAt(before,id)), now=newsText(newsAt(after,id));
     if(old!==now) rows.push(['News',old,now]);
     if(control(a)!==control(b)) rows.push(['Control',sides(control(a)),sides(control(b))]);
     if(rows.length) {
       const position=[...MARK,'person','support'].filter(k=>k==='support'||a[k]||b[k]).map(k=>[LABEL[k],describeValue(k,a[k]),describeValue(k,b[k])]);
-      for(const f of ['r','s']) if(a.caps[f].length||b.caps[f].length) position.push([NAME[f]+' Capabilities',capText(a.caps[f]),capText(b.caps[f])]);
+      for(const f of ['r','s']) if(a.caps[f].length||b.caps[f].length) position.push([NAME[f]+' Capabilities',capText(a.caps[f],f),capText(b.caps[f],f)]);
       if(old!=='—'||now!=='—') position.push(['News',old,now]);
       position.push(['Control',sides(control(a)),sides(control(b))]);
       spaces.push({id,rows,position,control:[sides(control(a)),sides(control(b))]});
@@ -248,7 +251,10 @@ export function boardDiff(before,after) {
   const ap=pools(before),bp=pools(after);
   const poolLabels={r:'Reds Cells',s:'Senate Cells',m:'Moderates Cells',prep:'Prepared markers',news:'News markers',sabotage:'Sabotage markers',person:'Personality'};
   for(const key of Object.keys(ap)) if(ap[key]!==bp[key]) tracks.push(['Available · '+(poolLabels[key]??LABEL[key]??key),String(ap[key]),String(bp[key])]);
-  for(const f of ['r','s']) if(capText(before.held[f])!==capText(after.held[f])) tracks.push([NAME[f]+' Capabilities box',capText(before.held[f]),capText(after.held[f])]);
+  for(const f of ['r','s']) {
+    const beforeCaps=capText(before.held[f],f), afterCaps=capText(after.held[f],f);
+    if(beforeCaps!==afterCaps) tracks.push([NAME[f]+' Capabilities box',beforeCaps,afterCaps]);
+  }
   return {spaces,tracks};
 }
 function ISSUE_LABELS_DIFF(before,after,tracks) {

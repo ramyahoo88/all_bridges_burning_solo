@@ -1,7 +1,7 @@
 import {NAME, NEAR, SPACE_IDS, TOWNS, distance, pop, spaceName, town} from './data.js';
 import {capacity, cells, cleanSpace, control, countActive, flip, forces, human, newsAt, personality, pools, score} from './model.js';
-import {createMoveState, engage, legalRail, resolveMessageMove, terrorAt, terrorOptions, travel, unmovedCells, unmovedCount} from './actions.js';
-import {chooseRanked, chooseSpaceRanked, pick, roll} from './random.js';
+import {createMoveState, engage, legalRail, resolveMessageMove, terrorAt, terrorOptions, travel, unmovedCapabilities, unmovedCells, unmovedCount} from './actions.js';
+import {chooseRanked, chooseSpaceRanked, compareRank, pick, roll} from './random.js';
 import {nearest, placeRanked} from './bot-rally.js';
 
 export const orphanAdmin = g=>SPACE_IDS.some(id=>g.board[id].admin&&!cells(g.board[id],'r'));
@@ -253,49 +253,49 @@ export function botMessage(g,number,limit,log) {
   }
   return used;
 }
-function group(g,f,from,to,count,caps) {
+function group(g,f,from,to,count,caps,movedInto) {
   const b=g.board[from], d=g.board[to];
-  const inactive=Math.min(b[f+'I'],count),active=count-inactive;
-  const russian=f==='r'?Math.min(b.u,count):0;
-  const origin={...b,[f+'I']:b[f+'I']-inactive,[f+'A']:b[f+'A']-active};
+  const inactive=Math.min(unmovedCount(b,movedInto,from,f+'I'),count),active=count-inactive;
+  const russian=f==='r'?Math.min(unmovedCount(b,movedInto,from,'u'),count):0;
   const dest={...d,[f+'I']:d[f+'I']+inactive,[f+'A']:d[f+'A']+active};
-  return {from,to,count,caps,russian,origin,dest,inactive};
+  return {from,to,count,caps,russian,dest,inactive};
 }
-const moveCaps=(g,f,from,to)=>{
-  const list=g.board[from].caps[f];
+const moveCaps=(g,f,from,to,movedInto)=>{
+  const list=unmovedCapabilities(g.board[from],movedInto,from,f);
   return list.filter(cap=>cap!=='train'||legalRail(g,from,to)).sort((a,b)=>['train','officer','cannon'].indexOf(a)-['train','officer','cannon'].indexOf(b)).slice(0,2);
 };
 const keepsOriginControl=(from,b,origin,f)=>f==='r'?(!pop(from)||control(b)!=='r'||control(origin)==='r'):
   (!town(from)||(control(b)!=='s'||control(origin)==='s')&&(control(b)==='r'||control(origin)!=='r'));
-export function legalGroupSizes(g,f,from,{moving=true,mode='march'}={}) {
-  const b=g.board[from], total=cells(b,f);
+export function legalGroupSizes(g,f,from,{moving=true,mode='march',movedInto}={}) {
+  const b=g.board[from], total=unmovedCells(b,movedInto,from,f);
   if(!moving) return (f==='s'?total>=3:total>=3||total>=1&&b.caps.r.length>0)?[total]:[];
   const max=total-1;
   if(max<1) return [];
   const proposed=f==='s'?[5,4,3].filter(n=>n<=max):mode==='attack'?(max>=3?[3]:[]):[max];
   return proposed.filter(n=>{
-    const inactive=Math.min(b[f+'I'],n), active=n-inactive;
+    const inactive=Math.min(unmovedCount(b,movedInto,from,f+'I'),n), active=n-inactive;
     return keepsOriginControl(from,b,{...b,[f+'I']:b[f+'I']-inactive,[f+'A']:b[f+'A']-active},f);
   });
 }
-export function legalMarchGroup(g,f,from) {
-  const b=g.board[from], total=cells(b,f);
+export function legalMarchGroup(g,f,from,movedInto) {
+  const b=g.board[from];
   if(f==='r'&&(town(from)||b.admin||!(b.g>=2||b.support>0&&!b.rA))) return null;
-  const sizes=legalGroupSizes(g,f,from,{moving:true,mode:'march'});
+  const sizes=legalGroupSizes(g,f,from,{moving:true,mode:'march',movedInto});
   if(!sizes.length) return null;
-  const count=sizes[0];
-  return {from,sizes,rank:f==='r'?[b.g>=2?0:1]:[-Number(b.caps.s.length>0),-count,-total]};
+  const caps=unmovedCapabilities(b,movedInto,from,f);
+  return {from,sizes,rank:f==='r'?[b.g>=2?0:1]:[-Number(caps.length>0),-sizes[0],-unmovedCells(b,movedInto,from,f)]};
 }
 export function legalMarchDestinations(g,f,grp,{targets,senatePop,tracker,limit=99}) {
   const {from,sizes}=grp;
   return NEAR[from].filter(to=>tracker.toUsed.size<limit||tracker.toUsed.has(to)).flatMap(to=>{
     for(const size of sizes) {
-      const c=group(g,f,from,to,size,moveCaps(g,f,from,to));
+      const caps=moveCaps(g,f,from,to,tracker.movedInto);
+      const c=group(g,f,from,to,size,caps,tracker.movedInto);
       if(f==='r') {
         const gain=pop(to)&&control(g.board[to])!=='r'&&control(c.dest)==='r';
         const breaks=senatePop>=4&&town(to)&&control(g.board[to])==='s'&&control(c.dest)!=='s';
         if(!gain&&!breaks) continue;
-        c.rank=[gain?0:1,-pop(to),gain?-g.board[to].support:0,...grp.rank];
+        c.rank=[gain?0:1,-pop(to),gain?-g.board[to].support:0];
         return [c];
       }
       const claim=town(to)&&control(g.board[to])!=='s'&&control(c.dest)==='s';
@@ -307,10 +307,15 @@ export function legalMarchDestinations(g,f,grp,{targets,senatePop,tracker,limit=
     return [];
   });
 }
+function selectGroupAndDestination(g,groups,card,command,log) {
+  const label='#'+card+' · ';
+  const origin=chooseSpaceRanked(g,groups,grp=>grp.rank,log,label+'Select '+command+' group',grp=>spaceName(grp.from),grp=>grp.from);
+  if(!origin) return undefined;
+  return chooseSpaceRanked(g,origin.destinations,dest=>dest.rank,log,label+'Select '+command+' destination',
+    move=>spaceName(move.from)+(move.from===move.to?'':' → '+spaceName(move.to))+' ('+move.count+' Cells)',move=>move.to);
+}
 export function selectMarchMove(g,f,groups,log) {
-  const origin=f==='s'?chooseSpaceRanked(g,groups,grp=>grp.rank,log,'#59 · Select March group',grp=>spaceName(grp.from),grp=>grp.from):null;
-  const candidates=f==='s'?origin?.destinations??[]:groups.flatMap(grp=>grp.destinations);
-  return chooseSpaceRanked(g,candidates,x=>x.rank,log,'March: apply #'+(f==='r'?53:59)+' movement and destination priorities',x=>spaceName(x.from)+' → '+spaceName(x.to)+' ('+x.count+' Cells)',x=>x.to);
+  return selectGroupAndDestination(g,groups,f==='r'?53:59,'March',log);
 }
 export function eventMarch(g,f,from,to) {
   if(g.phase!==2||!NEAR[from].includes(to)) return null;
@@ -324,16 +329,26 @@ export function eventMarch(g,f,from,to) {
 }
 export function botMarch(g,f,limit,log) {
   const tracker=createMoveState();
-  while(tracker.fromUsed.size<SPACE_IDS.length) {
+  // Every move reduces the total number of unmoved Cells.
+  for(;;) {
     const targets=TOWNS.filter(id=>control(g.board[id])!=='s');
     const senatePop=score(g).senate;
-    const groups=SPACE_IDS.filter(id=>!tracker.fromUsed.has(id)&&!tracker.toUsed.has(id))
-      .map(from=>legalMarchGroup(g,f,from)).filter(Boolean)
-      .map(grp=>({...grp,destinations:legalMarchDestinations(g,f,grp,{targets,senatePop,tracker,limit})}))
-      .filter(grp=>grp.destinations.length>0);
+    const groups=SPACE_IDS.flatMap(from=>{
+      const group=legalMarchGroup(g,f,from,tracker.movedInto);
+      if(!group) return [];
+      let destinations=legalMarchDestinations(g,f,group,{targets,senatePop,tracker,limit});
+      if(!destinations.length) return [];
+      let rank=group.rank;
+      if(f==='s') {
+        const withCapabilities=destinations.filter(move=>move.caps.length>0);
+        if(withCapabilities.length) destinations=withCapabilities;
+        rank=[withCapabilities.length?0:1,-Math.max(...destinations.map(move=>move.count)),group.rank[2]];
+      }
+      return [{from,rank,destinations}];
+    });
     const move=selectMarchMove(g,f,groups,log);
     if(!move) break;
-    travel(g,f,move.from,move.to,{...move,allowSharedDest:true},tracker);
+    travel(g,f,move.from,move.to,{...move,allowMultipleGroups:true},tracker);
     if(limit===1) break;
   }
   return tracker.toUsed.size;
@@ -362,8 +377,8 @@ function attackCandidates(g,f,from) {
     if(f==='r'&&!d.caps.s.length&&!(town(to)&&cells(d,foe))&&!(pop(to)>0&&cells(d,foe))) return [];
     if(f==='s'&&!(town(to)&&(!move||cells(d,foe)))&&!(move&&targets.some(id=>distance(to,id)<distance(from,id)))) return [];
     c.defenders=opp;
-    c.rank=f==='r'?[d.caps.s.length?0:town(to)?1:2,-Number(d.caps.s.includes('train')),-Number(c.caps.includes('train')),-pop(to),-Number(b.caps.r.length>0)]:
-      [town(to)?0:1,-Number(c.caps.includes('train')),-pop(to),-Number(b.caps.s.length>0),-count];
+    c.rank=f==='r'?[d.caps.s.length?0:town(to)?1:2,-Number(d.caps.s.includes('train')),-Number(c.caps.includes('train')),-pop(to)]:
+      [town(to)?0:1,-Number(c.caps.includes('train')),-pop(to)];
     return [c];
   });
 }
@@ -371,12 +386,24 @@ export function botAttack(g,f,limit,log,{boost=0,local=false}={}) {
   const used=new Set();
   let count=0;
   while(count<limit) {
-    const candidates=SPACE_IDS.filter(id=>!used.has(id)).flatMap(id=>attackCandidates(g,f,id)).filter(c=>!used.has(c.to)&&(!local||c.from===c.to));
-    const selected=chooseSpaceRanked(g,candidates,x=>x.rank,log,'Attack: #'+(f==='r'?52:58)+' group and target priorities',x=>spaceName(x.from)+(x.to!==x.from?' → '+spaceName(x.to):''),x=>x.to);
+    const groups=SPACE_IDS.filter(id=>!used.has(id)).flatMap(from=>{
+      let destinations=attackCandidates(g,f,from).filter(move=>!used.has(move.to)&&(!local||move.from===move.to));
+      if(!destinations.length) return [];
+      const withCapabilities=destinations.filter(move=>move.caps.length>0);
+      if(withCapabilities.length) destinations=withCapabilities;
+      const rank=[withCapabilities.length?0:1];
+      if(f==='s'&&!withCapabilities.length) rank.push(-Math.max(...destinations.map(move=>move.count)));
+      // The Attack card also ranks targets among groups at the same priority.
+      const bestTarget=destinations.map(move=>move.rank).sort(compareRank)[0];
+      rank.push(...bestTarget);
+      return [{from,rank,destinations}];
+    });
+    const selected=selectGroupAndDestination(g,groups,f==='r'?52:58,'Attack',log);
     if(!selected) break;
-    const {from,to,defenders,russian,caps}=selected;
+    const {from,to,defenders}=selected;
     if(from!==to) travel(g,f,from,to,selected);
-    engage(g,log,{f,id:to,defenders,attackCount:selected.count,russians:russian,caps,boost,bot:true,attackerInactive:selected.inactive??null});
+    const russians=f==='r'?g.board[to].u:0;
+    engage(g,log,{f,id:to,defenders,attackCount:selected.count,russians,boost,bot:true,attackerInactive:selected.inactive??null});
     used.add(from);
     used.add(to);
     count++;

@@ -1,8 +1,8 @@
-import {FACTIONS, NAME, NEAR, SPACES, SPACE_IDS, VERSION, spaceName} from './data.js';
+import {FACTIONS, NAME, NEAR, SPACES, SPACE_IDS, VERSION, eventName, spaceName} from './data.js';
 import {boardDiff, cells, clone, newGame, newsAt} from './model.js';
 import {actor} from './sequence.js';
 import {preview} from './engine.js';
-import {STORAGE_KEY, activeCampaign, addCampaign, campaignSizes, checkpointCampaign, commitCampaign, createStore, decode, duplicateCampaign, encode, encodeCampaign, importCopies, newCampaign, recoverDraft, renameCampaign, stepHistory, validateDraft} from './storage.js';
+import {MAX_SAVE_BYTES, STORAGE_KEY, activeCampaign, addCampaign, campaignSizes, checkpointCampaign, commitCampaign, createStore, decode, duplicateCampaign, encodeBackupParts, encodeCampaign, importCopies, newCampaign, recoverDraft, renameCampaign, stepHistory, validateDraft} from './storage.js';
 import {availableTable, boardCards, checklistKeys, editSpace, editorHtml, reportHtml, scoreStrip, spaceOccupied} from './ui-board.js';
 import {actionSummary, agitationSummaryHtml, resourceRow, sequenceHtml, turnBody, turnStatus} from './ui-turn.js';
 import {btn, check, checks, commandSummaryHtml, ensure, escape, group, lineInput, makeRow, numeric, resetSpecial, rowHelperText, select, spaceOptions} from './ui-fields.js';
@@ -16,6 +16,7 @@ const recoveredMessage='Recovered saved campaign. Damaged form fields were clear
 let pendingWrite=null, changeSerial=0, writtenSerial=0, message=boot.recoveredDraft?recoveredMessage:'', faulty='', switchFocus=null, importInput=null;
 let draftNew={name:'',humans:['r'],mode:'physical',seed:randomSeed(),checkpoint:true};
 let renameState={id:null,name:''}, exportedAt=collection.exportedAt;
+let preparedBackup=null;
 let showNew=!collection.active, confirm=null, remote=false;
 const entry=()=>activeCampaign(collection);
 const game=()=>entry()?.game;
@@ -49,7 +50,8 @@ function storageAlert() {
   if(status==='unavailable'&&entry()) return '<div class="notice warn" role="alert">Local storage is unavailable in this browser view. Export your campaign before closing this tab.</div>';
   return '';
 }
-function changed() {
+function changed({keepPreparedBackup=false}={}) {
+  if(!keepPreparedBackup) preparedBackup=null;
   changeSerial++;
   clearTimeout(pendingWrite);
   pendingWrite=setTimeout(()=>{void saveNow();},180);
@@ -165,10 +167,12 @@ function turnHtml(c) {
   const g=c.game;
   const trail=g.changedSpaces??[];
   const last=c.last;
+  const checklistCard=c.undo.at(-1)?.game.current;
   return '<div class="turn-layout"><section class="turn-main"><div class="card context"><p class="eyebrow">'+escape(actionSummary(g))+'</p>'+sequenceHtml(g)+resourceRow(g)+'</div>'+
     '<section class="card action-card" id="action-card"><div class="section-title"><h1>'+escape(turnStatus(g))+'</h1></div>'+
     (activePreview?.screen==='turn'?previewHtml(activePreview.plan):turnBody(g,c.draft))+'</section>'+
     (last?'<details class="card receipt" id="tabletop-checklist" data-detail-key="tabletop-checklist" '+(last.diff.spaces.length||last.diff.tracks.length?'open':'')+'><summary>Tabletop checklist · '+escape(last.title)+'</summary>'+
+      '<p class="quiet">'+escape(c.name)+' · '+escape(eventName(checklistCard??g.current))+' · v'+VERSION+'</p>'+
       (last.diff.spaces.length||last.diff.tracks.length?'<p class="quiet">Match these counts and markers on the physical board before continuing.</p>':'')+reportHtml(last,{applied:true,checkedItems:c.draft.checkedItems??[]})+'</details>':'')+
     '</section><aside class="turn-side"><div class="card compact"><h2>Board tracks</h2>'+scoreStrip(g)+'</div>'+
     '<div class="card compact"><h2>History</h2><div class="button-stack">'+
@@ -246,8 +250,19 @@ function campaignHtml() {
   const checkpoint=c?.checkpoints.length?'<details class="inline" data-detail-key="campaign-checkpoints"><summary>Campaign checkpoints · '+c.checkpoints.length+'</summary>'+
     c.checkpoints.map((cp,i)=>'<div class="line checkpoint"><span>'+escape(cp.label)+'</span>'+btn('restore-checkpoint','Restore as new history step',{value:i,kind:'subtle small'})+'</div>').join('')+'</details>':'';
   const dialog=confirm?'<div class="notice warn"><strong>'+escape(confirm.text)+'</strong><div class="controls">'+btn('confirm','Confirm',{kind:'primary'})+btn('cancel-confirm','Cancel',{kind:'subtle'})+'</div></div>':'';
-  return '<section class="card"><div class="section-title"><h1>Campaigns</h1></div>'+controls+dialog+(list?'<div class="campaign-list">'+list+'</div>':'<p class="quiet">Start a campaign or import a saved one.</p>')+checkpoint+'</section>'+
+  return '<section class="card"><div class="section-title"><h1>Campaigns</h1></div>'+controls+dialog+backupDownloadsHtml()+(list?'<div class="campaign-list">'+list+'</div>':'<p class="quiet">Start a campaign or import a saved one.</p>')+checkpoint+'</section>'+
     form+'<section class="card compact" id="backup-panel">'+backupHtml()+'</section>';
+}
+function sizeLabel(bytes) {
+  return bytes>=1_000_000?(bytes/1_000_000).toFixed(1)+' MB':Math.ceil(bytes/1024)+' KB';
+}
+function backupDownloadsHtml() {
+  if(!preparedBackup) return '';
+  const parts=preparedBackup.parts;
+  return '<section class="inline"><h2>Backup downloads</h2><p class="quiet">Prepared '+escape(formatStamp(preparedBackup.createdAt))+'. Download every part to keep the full collection. Import the files one at a time.</p>'+
+    parts.map((part,index)=>'<div class="line">'+btn('export-part','Download part '+(index+1)+' of '+parts.length,{value:index,kind:'subtle small'})+
+      '<span class="quiet">'+part.campaigns+' campaigns · '+sizeLabel(part.bytes)+'</span></div>').join('')+
+    '<div class="controls">'+btn('close-backup-downloads','Close backup downloads',{kind:'subtle small'})+'</div></section>';
 }
 function backupHtml() {
   const sizes=campaignSizes(collection);
@@ -260,7 +275,7 @@ function backupHtml() {
     (status==='recovery'?btn('replace-recovery','Use this workspace as the active save',{kind:'subtle'}):'')+'</div>';
   return '<h2>Save and backup</h2><p id="backup-state">'+(backup?'Previous local save available':'No previous local save')+(timestamps?' · '+escape(timestamps):'')+'</p>'+
     '<p class="quiet">Exports include the board, eligibility, unfinished choices, and random state. Import adds copies to this browser.</p>'+recovery+
-    (sizes.length?'<details class="inline" data-detail-key="campaign-sizes"><summary>Local campaign sizes</summary>'+sizes.map(([name,bytes])=>'<div class="line"><span>'+escape(name)+'</span><span>'+Math.ceil(bytes/1024)+' KB</span></div>').join('')+'</details>':'');
+    (sizes.length?'<details class="inline" data-detail-key="campaign-sizes"><summary>Local campaign sizes · '+sizeLabel(sizes.reduce((total,[,bytes])=>total+bytes,0))+'</summary>'+sizes.map(([name,bytes])=>'<div class="line"><span>'+escape(name)+'</span><span>'+sizeLabel(bytes)+'</span></div>').join('')+'</details>':'');
 }
 function paintBackup() {
   const panel=document.getElementById('backup-panel');
@@ -520,9 +535,16 @@ function download(raw,filename) {
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 const safeName=value=>String(value).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,65)||'campaign';
+function recordExport() {
+  exportedAt=new Date().toISOString();
+  if(status==='saved'&&changeSerial===writtenSerial) {
+    changed({keepPreparedBackup:true});
+    void saveNow();
+  }
+}
 async function importFile(file) {
   try {
-    if(file.size>16_000_000) throw Error('This save file is too large.');
+    if(file.size>MAX_SAVE_BYTES) throw Error('This save file is too large.');
     let recoveredDraft=false;
     const incoming=decode(await file.text(),{onDraftRecovery:()=>{recoveredDraft=true;}});
     if(!incoming.campaigns.length) throw Error('The file contains no campaigns.');
@@ -554,6 +576,7 @@ function doConfirm() {
   if(choice?.type==='reload') {
     const opened=store.open();
     collection=opened.collection;
+    preparedBackup=null;
     exportedAt=collection.exportedAt;
     status=opened.status;
     backup=opened.backup;
@@ -720,15 +743,29 @@ root.addEventListener('click',event=>{
     } else if(action==='export-one') {
       const item=collection.campaigns.find(x=>x.id===value);
       download(encodeCampaign(item),'abb-'+safeName(item.name)+'.json');
-      exportedAt=new Date().toISOString();
+      recordExport();
       message='Campaign export prepared.';
-      if(status==='saved'&&changeSerial===writtenSerial) { changed(); void saveNow(); }
       refresh();
     } else if(action==='export-all') {
-      download(encode(collection),'abb-campaigns.json');
-      exportedAt=new Date().toISOString();
-      message='Campaign collection export prepared.';
-      if(status==='saved'&&changeSerial===writtenSerial) { changed(); void saveNow(); }
+      const parts=encodeBackupParts(collection);
+      preparedBackup=null;
+      if(parts.length===1) {
+        download(parts[0].raw,'abb-campaigns.json');
+        recordExport();
+        message='Campaign collection export prepared.';
+      } else {
+        preparedBackup={parts,createdAt:new Date().toISOString()};
+      }
+      refresh();
+    } else if(action==='export-part') {
+      const {parts,createdAt}=preparedBackup;
+      const stamp=createdAt.slice(0,19).replace(/:/g,'-');
+      download(parts[Number(value)].raw,'abb-campaigns-'+stamp+'-part-'+(Number(value)+1)+'-of-'+parts.length+'.json');
+      recordExport();
+      message='Backup part '+(Number(value)+1)+' prepared.';
+      refresh();
+    } else if(action==='close-backup-downloads') {
+      preparedBackup=null;
       refresh();
     } else if(action==='import') importInput.click();
     else if(action==='retry') void saveNow();

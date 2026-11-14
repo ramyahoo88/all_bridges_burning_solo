@@ -198,6 +198,8 @@ details[open] > summary { margin-bottom: .32rem; }
   .controls .primary { flex-grow: 1; }
   .coverage > div { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
   .coverage p { grid-column: 1/-1; font-size: .86rem; }
+  .change { grid-template-columns: minmax(0,1fr) 1rem minmax(0,1fr); }
+  .change > :first-child { grid-column: 1/-1; }
   .campaign-row { display: block; }
   .campaign-row .controls { margin-top: .4rem; }
   footer { font-size: .73rem; }
@@ -217,7 +219,7 @@ details[open] > summary { margin-bottom: .32rem; }
 (() => {
 const modules={
 "actions.js": function(require) {
-const { FACTIONS, NEAR, RAIL, edge, spaceName}=require("data.js");
+const {FACTIONS, NAME, NEAR, RAIL, capabilityName, edge, spaceName}=require("data.js");
 const {addNews, capacity, cells, clamp, cleanSpace, clone, countTerror, flip, human, newsAt, pay, pools}=require("model.js");
 const {chooseSpaceRanked, pick, roll}=require("random.js");
 
@@ -225,15 +227,23 @@ const enemy = f=>FACTIONS.filter(other=>other!==f);
 function createMoveState() {
   return {fromUsed:new Set(),toUsed:new Set(),movedInto:{}};
 }
-const unmovedCount = (b,movedInto,id,key)=>Math.max(0,b[key]-(movedInto[id]?.[key]??0));
+const unmovedCount = (b,movedInto,id,key)=>Math.max(0,b[key]-(movedInto?.[id]?.[key]??0));
 const unmovedCells = (b,movedInto,id,f='m')=>unmovedCount(b,movedInto,id,f+'A')+unmovedCount(b,movedInto,id,f+'I');
+function unmovedCapabilities(b,movedInto,id,f) {
+  const arrivals={...movedInto?.[id]?.capabilities};
+  return b.caps[f].filter(cap=>{
+    if(!arrivals[cap]) return true;
+    arrivals[cap]--;
+    return false;
+  });
+}
 function recordMovedInto(movedInto,id,key,count=1) {
   if(count<=0) return;
   const arrivals=movedInto[id]??={};
   arrivals[key]=(arrivals[key]??0)+count;
 }
-function recordGroupMove(tracker,from,to,{allowSharedDest=false}={}) {
-  if(tracker.fromUsed.has(from)||tracker.toUsed.has(from)||(!allowSharedDest&&(tracker.fromUsed.has(to)||tracker.toUsed.has(to)))) {
+function recordGroupMove(tracker,from,to,{allowMultipleGroups=false}={}) {
+  if(!allowMultipleGroups&&[from,to].some(id=>tracker.fromUsed.has(id)||tracker.toUsed.has(id))) {
     throw Error('Enter each movement group once and use each destination once. Record mixed or converging groups in the tabletop editor.');
   }
   tracker.fromUsed.add(from);
@@ -330,6 +340,11 @@ function putCube(g,side) {
   g.tracks[side+'C']++;
   return true;
 }
+function politicalCubeChoices(g) {
+  if(g.issues.every(Boolean)) return [];
+  const available=pools(g);
+  return ['r','s'].filter(side=>available[side+'C']>0);
+}
 function legalRail(g,from,to) {
   return RAIL.includes(edge(from,to))&&!g.sabotage.includes(edge(from,to));
 }
@@ -339,23 +354,39 @@ function carryNews(g,f,from,to) {
 }
 function travel(g,f,from,to,opts,tracker=null) {
   const b=g.board[from], d=g.board[to], count=opts.count;
-  if(!NEAR[from]?.includes(to)||!Number.isInteger(count)||count<1||count>cells(b,f)) throw Error('Select an adjacent destination and an available group.');
-  if(tracker) recordGroupMove(tracker,from,to,{allowSharedDest:Boolean(opts.allowSharedDest)});
-  const inactive=opts.activeFirst?Math.max(0,count-b[f+'A']):Math.min(count,b[f+'I']);
+  if(!NEAR[from]?.includes(to)||!Number.isInteger(count)||count<1) throw Error('Select an adjacent destination and an available group.');
+  const movedInto=tracker?.movedInto;
+  const availableActive=unmovedCount(b,movedInto,from,f+'A');
+  const availableInactive=unmovedCount(b,movedInto,from,f+'I');
+  if(count>availableActive+availableInactive) throw Error('Select an available group that has not moved.');
+  const movingCaps=opts.caps??[];
+  const availableCaps=unmovedCapabilities(b,movedInto,from,f);
+  for(const cap of movingCaps) {
+    if(cap==='train'&&!legalRail(g,from,to)) throw Error('A Train needs an unsabotaged railway across that border.');
+    const index=availableCaps.indexOf(cap);
+    if(index<0) throw Error('The selected Capability is unavailable for this move.');
+    availableCaps.splice(index,1);
+  }
+  if(tracker) recordGroupMove(tracker,from,to,{allowMultipleGroups:opts.allowMultipleGroups});
+  const inactive=opts.activeFirst?Math.max(0,count-availableActive):Math.min(count,availableInactive);
   const active=count-inactive;
   b[f+'I']-=inactive;
   d[f+'I']+=inactive;
   b[f+'A']-=active;
   d[f+'A']+=active;
-  const russian=f==='r'?Math.min(opts.russian??0,b.u,count):0;
+  const russian=f==='r'?Math.min(opts.russian??0,unmovedCount(b,movedInto,from,'u'),count):0;
   b.u-=russian;
   d.u+=russian;
-  for(const cap of opts.caps??[]) {
-    if(cap==='train'&&!legalRail(g,from,to)) throw Error('A Train needs an unsabotaged railway across that border.');
-    const index=b.caps[f].indexOf(cap);
-    if(index<0) throw Error('The selected Capability is unavailable.');
-    b.caps[f].splice(index,1);
+  for(const cap of movingCaps) {
+    b.caps[f].splice(b.caps[f].indexOf(cap),1);
     d.caps[f].push(cap);
+  }
+  if(movedInto) {
+    recordMovedInto(movedInto,to,f+'I',inactive);
+    recordMovedInto(movedInto,to,f+'A',active);
+    recordMovedInto(movedInto,to,'u',russian);
+    const arrivals=(movedInto[to].capabilities??={});
+    for(const cap of movingCaps) arrivals[cap]=(arrivals[cap]??0)+1;
   }
   carryNews(g,f,from,to);
   cleanSpace(g,from);
@@ -394,27 +425,47 @@ function resolveMessageMove(g,log,step,movedInto={}) {
   cleanSpace(g,from);
   return {to,captured,status};
 }
-function capStrength(caps) {
-  const officer=caps.includes('officer-s');
-  return caps.map(cap=>cap==='officer-s'?2:cap==='officer-r'?1:officer?2:1).sort((a,b)=>b-a).slice(0,2).reduce((sum,n)=>sum+n,0);
+function capabilityModifiers(caps,f) {
+  const points=f==='s'&&caps.includes('officer')?2:1;
+  // Show the Jaeger first, since it also boosts the other Capability used.
+  const ordered=[...caps].sort((a,b)=>Number(b==='officer')-Number(a==='officer'));
+  return ordered.slice(0,2).map(cap=>[capabilityName(cap,f),points]);
 }
-const capSide = (list,f)=>list.map(cap=>cap==='officer'?'officer-'+f:cap);
-function battleStrength(g,{f,id,defenders,attackCount,russians=0,caps=null,boost=0,bot=!human(g,f)}) {
+function battleStrengthDetails(g,{f,id,defenders,attackCount,russians=0,caps=null,boost=0,bot=!human(g,f)}) {
   const b=g.board[id];
   const russianWeight=g.tracks.rV>=2?2:1;
-  const offense=f==='g'?b.g*2:bot?(f==='s'?7:5):Number(attackCount>=3);
-  let strength=offense+boost+russians*russianWeight;
-  if(f!=='g') strength+=capStrength(capSide(caps??b.caps[f],f));
+  const modifiers=[];
+  if(f==='g') modifiers.push([b.g+' German Troops',b.g*2]);
+  else if(bot) modifiers.push([NAME[f]+' base',f==='s'?7:5]);
+  else modifiers.push([attackCount+' attacking Cells',Number(attackCount>=3)]);
+  if(russians) modifiers.push([russians+' attacking Russian Troops',russians*russianWeight]);
+  if(f!=='g') modifiers.push(...capabilityModifiers(caps??b.caps[f],f));
+  if(boost) modifiers.push(['Boost',boost]);
   for(const target of defenders) {
-    if(target==='g') strength-=b.g*2;
-    if(target==='u') strength-=b.u*russianWeight;
-    if(target==='r'||target==='s') strength-=b[target+'Prep']*2+capStrength(capSide(b.caps[target],target));
+    if(target==='g'&&b.g) modifiers.push([b.g+' defending German Troops',-b.g*2]);
+    if(target==='u'&&b.u) modifiers.push([b.u+' defending Russian Troops',-b.u*russianWeight]);
+    if(target==='r'||target==='s') {
+      if(b[target+'Prep']) modifiers.push([NAME[target]+' Prepared',-2*b[target+'Prep']]);
+      for(const [name,points] of capabilityModifiers(b.caps[target],target)) {
+        modifiers.push([NAME[target]+' '+name,-points]);
+      }
+    }
   }
-  return f==='g'?Math.max(2,strength):strength;
+  let strength=modifiers.reduce((sum,[,points])=>sum+points,0);
+  if(f==='g'&&strength<2) {
+    modifiers.push(['German minimum',2-strength]);
+    strength=2;
+  }
+  const breakdown=modifiers.map(([name,points])=>name+' '+(points>=0?'+':'')+points).join(', ');
+  return {strength,breakdown};
+}
+function battleStrength(g,options) {
+  return battleStrengthDetails(g,options).strength;
 }
 function engage(g,log,{f,id,defenders,attackCount,russians=0,caps=null,boost=0,retreat=null,die=null,bot=!human(g,f),activeFirst=false,casualty='active',attrition='inactive',attackerInactive=null,casualtyLimit=Infinity}) {
   const b=g.board[id];
-  const strength=battleStrength(g,{f,id,defenders,attackCount,russians,caps,boost,bot});
+  let attackU=f==='r'?Math.min(russians,b.u):0;
+  const {strength,breakdown}=battleStrengthDetails(g,{f,id,defenders,attackCount,russians:attackU,caps,boost,bot});
   const attackingInactive=f==='g'?0:attackerInactive!==null?attackerInactive:activeFirst?Math.max(0,attackCount-b[f+'A']):Math.min(attackCount,b[f+'I']);
   let attackI=attackingInactive, attackA=attackCount-attackI;
   if(f!=='g'&&attackI>0) {
@@ -423,7 +474,7 @@ function engage(g,log,{f,id,defenders,attackCount,russians=0,caps=null,boost=0,r
     attackA++;
   }
   const result=die??roll(g,log,'Attack in '+spaceName(id));
-  log.push(spaceName(id)+' · Strength '+strength+'; '+(result===6?'6 always fails':result<=strength?'hits':'misses'));
+  log.push(spaceName(id)+' · Strength '+strength+'; '+(result===6?'6 always fails':result<=strength?'hits':'misses')+' · '+breakdown);
   if(result===6||result>strength) return;
   const cf=defenders.find(side=>side==='r'||side==='s');
   const tf=defenders.find(side=>side==='g'||side==='u');
@@ -462,20 +513,32 @@ function engage(g,log,{f,id,defenders,attackCount,russians=0,caps=null,boost=0,r
     attackI-=other;
   };
   if(f!=='g') {
-    attackerLoss(Math.min(troopsLost,attackCount));
-    if(f==='r') b.u-=Math.min(b.u,russians,Math.max(0,troopsLost-attackCount));
+    let takeCell=true;
+    for(let loss=0;loss<troopsLost;loss++) {
+      const hasCell=attackA+attackI>0;
+      if(hasCell&&(takeCell||!attackU)) {
+        attackerLoss(1);
+        takeCell=false;
+      } else if(attackU) {
+        b.u--;
+        attackU--;
+        takeCell=true;
+      } else break;
+    }
     attackerLoss(Math.min(Math.floor(casualties/3),attackA+attackI));
   }
   if(prison) {
     const side=f==='g'?'s':f;
-    if(countTerror(b)<2&&pools(g)[side+'Terror']>0) b[side+'Terror']++;
-    g.tracks.pol=clamp(g.tracks.pol+1,0,10);
+    if(countTerror(b)<2&&pools(g)[side+'Terror']>0) {
+      b[side+'Terror']++;
+      g.tracks.pol=clamp(g.tracks.pol+1,0,10);
+    }
     addNews(g,id);
   }
   cleanSpace(g,id);
 }
 
-return {enemy,createMoveState,unmovedCount,unmovedCells,recordMovedInto,recordGroupMove,rallySize,placeCells,removeCells,replaceWithDisc,rallyPlace,terrorOptions,terrorAt,cubeColor,putCube,legalRail,travel,resolveMessageMove,battleStrength,engage};
+return {enemy,createMoveState,unmovedCount,unmovedCells,unmovedCapabilities,recordMovedInto,recordGroupMove,rallySize,placeCells,removeCells,replaceWithDisc,rallyPlace,terrorOptions,terrorAt,cubeColor,putCube,politicalCubeChoices,legalRail,travel,resolveMessageMove,battleStrengthDetails,battleStrength,engage};
 },
 "bot-events.js": function(require) {
 const {BORDERS, NAME, NEAR, SPACE_IDS, TOWNS, distance, pop, spaceName, town}=require("data.js");
@@ -956,8 +1019,8 @@ return {passForEvent,shouldBlockEvent,eventChoiceSpaces,finishEventChoice,hennal
 "bot-operations.js": function(require) {
 const {NAME, NEAR, SPACE_IDS, TOWNS, distance, pop, spaceName, town}=require("data.js");
 const {capacity, cells, cleanSpace, control, countActive, flip, forces, human, newsAt, personality, pools, score}=require("model.js");
-const {createMoveState, engage, legalRail, resolveMessageMove, terrorAt, terrorOptions, travel, unmovedCells, unmovedCount}=require("actions.js");
-const {chooseRanked, chooseSpaceRanked, pick, roll}=require("random.js");
+const {createMoveState, engage, legalRail, resolveMessageMove, terrorAt, terrorOptions, travel, unmovedCapabilities, unmovedCells, unmovedCount}=require("actions.js");
+const {chooseRanked, chooseSpaceRanked, compareRank, pick, roll}=require("random.js");
 const {nearest, placeRanked}=require("bot-rally.js");
 
 const orphanAdmin = g=>SPACE_IDS.some(id=>g.board[id].admin&&!cells(g.board[id],'r'));
@@ -1209,49 +1272,49 @@ function botMessage(g,number,limit,log) {
   }
   return used;
 }
-function group(g,f,from,to,count,caps) {
+function group(g,f,from,to,count,caps,movedInto) {
   const b=g.board[from], d=g.board[to];
-  const inactive=Math.min(b[f+'I'],count),active=count-inactive;
-  const russian=f==='r'?Math.min(b.u,count):0;
-  const origin={...b,[f+'I']:b[f+'I']-inactive,[f+'A']:b[f+'A']-active};
+  const inactive=Math.min(unmovedCount(b,movedInto,from,f+'I'),count),active=count-inactive;
+  const russian=f==='r'?Math.min(unmovedCount(b,movedInto,from,'u'),count):0;
   const dest={...d,[f+'I']:d[f+'I']+inactive,[f+'A']:d[f+'A']+active};
-  return {from,to,count,caps,russian,origin,dest,inactive};
+  return {from,to,count,caps,russian,dest,inactive};
 }
-const moveCaps=(g,f,from,to)=>{
-  const list=g.board[from].caps[f];
+const moveCaps=(g,f,from,to,movedInto)=>{
+  const list=unmovedCapabilities(g.board[from],movedInto,from,f);
   return list.filter(cap=>cap!=='train'||legalRail(g,from,to)).sort((a,b)=>['train','officer','cannon'].indexOf(a)-['train','officer','cannon'].indexOf(b)).slice(0,2);
 };
 const keepsOriginControl=(from,b,origin,f)=>f==='r'?(!pop(from)||control(b)!=='r'||control(origin)==='r'):
   (!town(from)||(control(b)!=='s'||control(origin)==='s')&&(control(b)==='r'||control(origin)!=='r'));
-function legalGroupSizes(g,f,from,{moving=true,mode='march'}={}) {
-  const b=g.board[from], total=cells(b,f);
+function legalGroupSizes(g,f,from,{moving=true,mode='march',movedInto}={}) {
+  const b=g.board[from], total=unmovedCells(b,movedInto,from,f);
   if(!moving) return (f==='s'?total>=3:total>=3||total>=1&&b.caps.r.length>0)?[total]:[];
   const max=total-1;
   if(max<1) return [];
   const proposed=f==='s'?[5,4,3].filter(n=>n<=max):mode==='attack'?(max>=3?[3]:[]):[max];
   return proposed.filter(n=>{
-    const inactive=Math.min(b[f+'I'],n), active=n-inactive;
+    const inactive=Math.min(unmovedCount(b,movedInto,from,f+'I'),n), active=n-inactive;
     return keepsOriginControl(from,b,{...b,[f+'I']:b[f+'I']-inactive,[f+'A']:b[f+'A']-active},f);
   });
 }
-function legalMarchGroup(g,f,from) {
-  const b=g.board[from], total=cells(b,f);
+function legalMarchGroup(g,f,from,movedInto) {
+  const b=g.board[from];
   if(f==='r'&&(town(from)||b.admin||!(b.g>=2||b.support>0&&!b.rA))) return null;
-  const sizes=legalGroupSizes(g,f,from,{moving:true,mode:'march'});
+  const sizes=legalGroupSizes(g,f,from,{moving:true,mode:'march',movedInto});
   if(!sizes.length) return null;
-  const count=sizes[0];
-  return {from,sizes,rank:f==='r'?[b.g>=2?0:1]:[-Number(b.caps.s.length>0),-count,-total]};
+  const caps=unmovedCapabilities(b,movedInto,from,f);
+  return {from,sizes,rank:f==='r'?[b.g>=2?0:1]:[-Number(caps.length>0),-sizes[0],-unmovedCells(b,movedInto,from,f)]};
 }
 function legalMarchDestinations(g,f,grp,{targets,senatePop,tracker,limit=99}) {
   const {from,sizes}=grp;
   return NEAR[from].filter(to=>tracker.toUsed.size<limit||tracker.toUsed.has(to)).flatMap(to=>{
     for(const size of sizes) {
-      const c=group(g,f,from,to,size,moveCaps(g,f,from,to));
+      const caps=moveCaps(g,f,from,to,tracker.movedInto);
+      const c=group(g,f,from,to,size,caps,tracker.movedInto);
       if(f==='r') {
         const gain=pop(to)&&control(g.board[to])!=='r'&&control(c.dest)==='r';
         const breaks=senatePop>=4&&town(to)&&control(g.board[to])==='s'&&control(c.dest)!=='s';
         if(!gain&&!breaks) continue;
-        c.rank=[gain?0:1,-pop(to),gain?-g.board[to].support:0,...grp.rank];
+        c.rank=[gain?0:1,-pop(to),gain?-g.board[to].support:0];
         return [c];
       }
       const claim=town(to)&&control(g.board[to])!=='s'&&control(c.dest)==='s';
@@ -1263,10 +1326,15 @@ function legalMarchDestinations(g,f,grp,{targets,senatePop,tracker,limit=99}) {
     return [];
   });
 }
+function selectGroupAndDestination(g,groups,card,command,log) {
+  const label='#'+card+' · ';
+  const origin=chooseSpaceRanked(g,groups,grp=>grp.rank,log,label+'Select '+command+' group',grp=>spaceName(grp.from),grp=>grp.from);
+  if(!origin) return undefined;
+  return chooseSpaceRanked(g,origin.destinations,dest=>dest.rank,log,label+'Select '+command+' destination',
+    move=>spaceName(move.from)+(move.from===move.to?'':' → '+spaceName(move.to))+' ('+move.count+' Cells)',move=>move.to);
+}
 function selectMarchMove(g,f,groups,log) {
-  const origin=f==='s'?chooseSpaceRanked(g,groups,grp=>grp.rank,log,'#59 · Select March group',grp=>spaceName(grp.from),grp=>grp.from):null;
-  const candidates=f==='s'?origin?.destinations??[]:groups.flatMap(grp=>grp.destinations);
-  return chooseSpaceRanked(g,candidates,x=>x.rank,log,'March: apply #'+(f==='r'?53:59)+' movement and destination priorities',x=>spaceName(x.from)+' → '+spaceName(x.to)+' ('+x.count+' Cells)',x=>x.to);
+  return selectGroupAndDestination(g,groups,f==='r'?53:59,'March',log);
 }
 function eventMarch(g,f,from,to) {
   if(g.phase!==2||!NEAR[from].includes(to)) return null;
@@ -1280,16 +1348,26 @@ function eventMarch(g,f,from,to) {
 }
 function botMarch(g,f,limit,log) {
   const tracker=createMoveState();
-  while(tracker.fromUsed.size<SPACE_IDS.length) {
+  // Every move reduces the total number of unmoved Cells.
+  for(;;) {
     const targets=TOWNS.filter(id=>control(g.board[id])!=='s');
     const senatePop=score(g).senate;
-    const groups=SPACE_IDS.filter(id=>!tracker.fromUsed.has(id)&&!tracker.toUsed.has(id))
-      .map(from=>legalMarchGroup(g,f,from)).filter(Boolean)
-      .map(grp=>({...grp,destinations:legalMarchDestinations(g,f,grp,{targets,senatePop,tracker,limit})}))
-      .filter(grp=>grp.destinations.length>0);
+    const groups=SPACE_IDS.flatMap(from=>{
+      const group=legalMarchGroup(g,f,from,tracker.movedInto);
+      if(!group) return [];
+      let destinations=legalMarchDestinations(g,f,group,{targets,senatePop,tracker,limit});
+      if(!destinations.length) return [];
+      let rank=group.rank;
+      if(f==='s') {
+        const withCapabilities=destinations.filter(move=>move.caps.length>0);
+        if(withCapabilities.length) destinations=withCapabilities;
+        rank=[withCapabilities.length?0:1,-Math.max(...destinations.map(move=>move.count)),group.rank[2]];
+      }
+      return [{from,rank,destinations}];
+    });
     const move=selectMarchMove(g,f,groups,log);
     if(!move) break;
-    travel(g,f,move.from,move.to,{...move,allowSharedDest:true},tracker);
+    travel(g,f,move.from,move.to,{...move,allowMultipleGroups:true},tracker);
     if(limit===1) break;
   }
   return tracker.toUsed.size;
@@ -1318,8 +1396,8 @@ function attackCandidates(g,f,from) {
     if(f==='r'&&!d.caps.s.length&&!(town(to)&&cells(d,foe))&&!(pop(to)>0&&cells(d,foe))) return [];
     if(f==='s'&&!(town(to)&&(!move||cells(d,foe)))&&!(move&&targets.some(id=>distance(to,id)<distance(from,id)))) return [];
     c.defenders=opp;
-    c.rank=f==='r'?[d.caps.s.length?0:town(to)?1:2,-Number(d.caps.s.includes('train')),-Number(c.caps.includes('train')),-pop(to),-Number(b.caps.r.length>0)]:
-      [town(to)?0:1,-Number(c.caps.includes('train')),-pop(to),-Number(b.caps.s.length>0),-count];
+    c.rank=f==='r'?[d.caps.s.length?0:town(to)?1:2,-Number(d.caps.s.includes('train')),-Number(c.caps.includes('train')),-pop(to)]:
+      [town(to)?0:1,-Number(c.caps.includes('train')),-pop(to)];
     return [c];
   });
 }
@@ -1327,12 +1405,24 @@ function botAttack(g,f,limit,log,{boost=0,local=false}={}) {
   const used=new Set();
   let count=0;
   while(count<limit) {
-    const candidates=SPACE_IDS.filter(id=>!used.has(id)).flatMap(id=>attackCandidates(g,f,id)).filter(c=>!used.has(c.to)&&(!local||c.from===c.to));
-    const selected=chooseSpaceRanked(g,candidates,x=>x.rank,log,'Attack: #'+(f==='r'?52:58)+' group and target priorities',x=>spaceName(x.from)+(x.to!==x.from?' → '+spaceName(x.to):''),x=>x.to);
+    const groups=SPACE_IDS.filter(id=>!used.has(id)).flatMap(from=>{
+      let destinations=attackCandidates(g,f,from).filter(move=>!used.has(move.to)&&(!local||move.from===move.to));
+      if(!destinations.length) return [];
+      const withCapabilities=destinations.filter(move=>move.caps.length>0);
+      if(withCapabilities.length) destinations=withCapabilities;
+      const rank=[withCapabilities.length?0:1];
+      if(f==='s'&&!withCapabilities.length) rank.push(-Math.max(...destinations.map(move=>move.count)));
+      // The Attack card also ranks targets among groups at the same priority.
+      const bestTarget=destinations.map(move=>move.rank).sort(compareRank)[0];
+      rank.push(...bestTarget);
+      return [{from,rank,destinations}];
+    });
+    const selected=selectGroupAndDestination(g,groups,f==='r'?52:58,'Attack',log);
     if(!selected) break;
-    const {from,to,defenders,russian,caps}=selected;
+    const {from,to,defenders}=selected;
     if(from!==to) travel(g,f,from,to,selected);
-    engage(g,log,{f,id:to,defenders,attackCount:selected.count,russians:russian,caps,boost,bot:true,attackerInactive:selected.inactive??null});
+    const russians=f==='r'?g.board[to].u:0;
+    engage(g,log,{f,id:to,defenders,attackCount:selected.count,russians,boost,bot:true,attackerInactive:selected.inactive??null});
     used.add(from);
     used.add(to);
     count++;
@@ -1501,8 +1591,8 @@ function botPersonality(g,log) {
   const site=personality(g);
   if(g.phase===2&&site&&g.board[site].mI) {
     const news=newsAt(g,site,'m')[0];
-    const cube=news?cubeColor(g,log,'equal'):null;
-    if(news&&cube&&putCube(g,cube)) {
+    if(news) {
+      if(!g.issues.every(Boolean)) putCube(g,cubeColor(g,log,'equal'));
       g.news=g.news.filter(n=>n.id!==news.id);
       const result=roll(g,log,'Personality uses News');
       if(score(g).politics>=3) g.tracks.pol=Math.max(0,g.tracks.pol-Math.ceil(result/2));
@@ -1788,12 +1878,13 @@ function botNews(g,log) {
 return {executeBotCard,botDraw,botTurn,botNews};
 },
 "data.js": function(require) {
-const VERSION = '0.10.4';
+const VERSION = '0.10.6';
 const FACTIONS = ['r', 's', 'm'];
 const NAME = {r:'Reds', s:'Senate', m:'Moderates', g:'Germany', u:'Russia'};
 const TYPES = ['cannon','train','officer'];
 const CAP_STOCK = {officer:4,cannon:2,train:2};
 const CAP_NAME = {cannon:'Cannon',train:'Train',officer:'Commander / Jaeger'};
+const capabilityName = (cap,f) => cap==='officer'?(f==='r'?'Commander':'Jaeger'):CAP_NAME[cap];
 const MARK = ['rA','rI','sA','sI','mA','mI','admin','network','u','g','rPrep','sPrep','rTerror','sTerror'];
 const LABEL = {
   rA:'Active Reds',rI:'Inactive Reds',sA:'Active Senate',sI:'Inactive Senate',
@@ -1913,7 +2004,7 @@ const EVENTS = Object.fromEntries(EVENT_ROWS.map(([id,title,pass='',light='',dar
 const eventName = id=>id==null?'Unrevealed':(EVENTS[id]?('#'+id+' '+EVENTS[id].title):'Unknown card');
 const SALT = {setup:0x5f2a8b71,deck:0x6340193e};
 
-return {VERSION,FACTIONS,NAME,TYPES,CAP_STOCK,CAP_NAME,MARK,LABEL,MOOD,SPACES,SPACE_IDS,TOWNS,spaceName,pop,town,edge,RAIL,BORDERS,NEAR,distance,borderName,ISSUE_LABELS,COMMANDS,SPECIALS,BOT_CARD,PROPAGANDA,EVENTS,eventName,SALT};
+return {VERSION,FACTIONS,NAME,TYPES,CAP_STOCK,CAP_NAME,capabilityName,MARK,LABEL,MOOD,SPACES,SPACE_IDS,TOWNS,spaceName,pop,town,edge,RAIL,BORDERS,NEAR,distance,borderName,ISSUE_LABELS,COMMANDS,SPECIALS,BOT_CARD,PROPAGANDA,EVENTS,eventName,SALT};
 },
 "editor.js": function(require) {
 const { MARK, SPACE_IDS}=require("data.js");
@@ -2475,7 +2566,7 @@ return {eventPrompt,eventSides,eventTag,capAvailable,capDestinations,placeCapabi
 "human.js": function(require) {
 const {BORDERS, COMMANDS, NEAR, SPECIALS, SPACE_IDS, pop, spaceName, town}=require("data.js");
 const { adjustResource, cells, cleanSpace, control, flip, newsAt, personality, pay, pools}=require("model.js");
-const {createMoveState, engage, enemy, legalRail, placeCells, putCube, rallySize, recordGroupMove, recordMovedInto, replaceWithDisc, resolveMessageMove, terrorAt, terrorOptions, travel, unmovedCells, unmovedCount}=require("actions.js");
+const {createMoveState, engage, enemy, legalRail, placeCells, politicalCubeChoices, putCube, rallySize, recordGroupMove, recordMovedInto, replaceWithDisc, resolveMessageMove, terrorAt, terrorOptions, travel, unmovedCells, unmovedCount}=require("actions.js");
 const { roll}=require("random.js");
 
 const requireThat=(check,message)=>{if(!check) throw Error(message);};
@@ -2577,7 +2668,9 @@ function resolveSpecial(g,f,log,spec,movedInto) {
     } else {
       const token=g.news.find(n=>n.id===Number(spec.token));
       requireThat(g.phase===2&&token?.space===id&&token.owner==='m'&&b?.person&&b.mI,'Select held News with the Personality and an Underground Moderates Cell.');
-      requireThat(putCube(g,spec.side),'Choose an available cube for the Political Display.');
+      const cubeChoices=politicalCubeChoices(g);
+      const side=cubeChoices.length===1?cubeChoices[0]:spec.side;
+      if(cubeChoices.length) requireThat(putCube(g,side),'Choose an available cube for the Political Display.');
       g.news=g.news.filter(n=>n.id!==token.id);
       const value=roll(g,log,'Personality uses News');
       if(spec.option==='lower') t.pol=Math.max(0,t.pol-Math.ceil(value/2));
@@ -2818,7 +2911,7 @@ function humanMessage(g,log,row,movedInto) {
 return {legalCommands,legalSpecials,recycle,redsAgitation,applyHumanCommand};
 },
 "model.js": function(require) {
-const {BORDERS, CAP_NAME, CAP_STOCK, EVENTS, FACTIONS, LABEL, MARK, MOOD, NAME, PROPAGANDA, SALT, SPACES, SPACE_IDS, TYPES, borderName, pop, spaceName, town}=require("data.js");
+const {BORDERS, CAP_NAME, CAP_STOCK, EVENTS, FACTIONS, LABEL, MARK, MOOD, NAME, PROPAGANDA, SALT, SPACES, SPACE_IDS, TYPES, borderName, capabilityName, pop, spaceName, town}=require("data.js");
 const {roll, shuffle}=require("random.js");
 
 const clone = value=>structuredClone(value);
@@ -3038,20 +3131,23 @@ function describeValue(key,value) {
   return String(value);
 }
 const sides = f=>NAME[f]??'Uncontrolled';
-const capText = list=>list.map(key=>CAP_NAME[key]).join(', ')||'—';
+const capText = (list,f)=>list.map(key=>capabilityName(key,f)).join(', ')||'—';
 const newsText = list=>list.map(n=>'#'+n.id+' '+(n.owner?NAME[n.owner]:'unheld')).join(', ')||'—';
 function boardDiff(before,after) {
   const spaces=[];
   for(const id of SPACE_IDS) {
     const a=before.board[id],b=after.board[id],rows=[];
     for(const k of [...MARK,'person','support']) if(a[k]!==b[k]) rows.push([LABEL[k],describeValue(k,a[k]),describeValue(k,b[k])]);
-    for(const f of ['r','s']) if(capText(a.caps[f])!==capText(b.caps[f])) rows.push([NAME[f]+' Capabilities',capText(a.caps[f]),capText(b.caps[f])]);
+    for(const f of ['r','s']) {
+      const beforeCaps=capText(a.caps[f],f), afterCaps=capText(b.caps[f],f);
+      if(beforeCaps!==afterCaps) rows.push([NAME[f]+' Capabilities',beforeCaps,afterCaps]);
+    }
     const old=newsText(newsAt(before,id)), now=newsText(newsAt(after,id));
     if(old!==now) rows.push(['News',old,now]);
     if(control(a)!==control(b)) rows.push(['Control',sides(control(a)),sides(control(b))]);
     if(rows.length) {
       const position=[...MARK,'person','support'].filter(k=>k==='support'||a[k]||b[k]).map(k=>[LABEL[k],describeValue(k,a[k]),describeValue(k,b[k])]);
-      for(const f of ['r','s']) if(a.caps[f].length||b.caps[f].length) position.push([NAME[f]+' Capabilities',capText(a.caps[f]),capText(b.caps[f])]);
+      for(const f of ['r','s']) if(a.caps[f].length||b.caps[f].length) position.push([NAME[f]+' Capabilities',capText(a.caps[f],f),capText(b.caps[f],f)]);
       if(old!=='—'||now!=='—') position.push(['News',old,now]);
       position.push(['Control',sides(control(a)),sides(control(b))]);
       spaces.push({id,rows,position,control:[sides(control(a)),sides(control(b))]});
@@ -3068,7 +3164,10 @@ function boardDiff(before,after) {
   const ap=pools(before),bp=pools(after);
   const poolLabels={r:'Reds Cells',s:'Senate Cells',m:'Moderates Cells',prep:'Prepared markers',news:'News markers',sabotage:'Sabotage markers',person:'Personality'};
   for(const key of Object.keys(ap)) if(ap[key]!==bp[key]) tracks.push(['Available · '+(poolLabels[key]??LABEL[key]??key),String(ap[key]),String(bp[key])]);
-  for(const f of ['r','s']) if(capText(before.held[f])!==capText(after.held[f])) tracks.push([NAME[f]+' Capabilities box',capText(before.held[f]),capText(after.held[f])]);
+  for(const f of ['r','s']) {
+    const beforeCaps=capText(before.held[f],f), afterCaps=capText(after.held[f],f);
+    if(beforeCaps!==afterCaps) tracks.push([NAME[f]+' Capabilities box',beforeCaps,afterCaps]);
+  }
   return {spaces,tracks};
 }
 function ISSUE_LABELS_DIFF(before,after,tracks) {
@@ -3157,7 +3256,7 @@ function compareRank(a,b) {
   return 0;
 }
 
-return {randomWord,randomIndex,roll,pick,shuffle,spaceFromRoll,pickSpace,chooseSpaceRanked,chooseRanked};
+return {randomWord,randomIndex,roll,pick,shuffle,spaceFromRoll,pickSpace,chooseSpaceRanked,chooseRanked,compareRank};
 },
 "rounds.js": function(require) {
 const {NAME, NEAR, SPACE_IDS, TOWNS, ISSUE_LABELS, pop, spaceName, town}=require("data.js");
@@ -3739,8 +3838,13 @@ const STORAGE_KEY='abb-companion.campaigns';
 const BACKUP_KEY=STORAGE_KEY+'.backup';
 const REJECTED_KEY=STORAGE_KEY+'.rejected';
 const MAX_CAMPAIGNS=250;
+const MAX_SAVE_BYTES=64_000_000;
+const BACKUP_PART_BYTES=16_000_000;
 const HISTORY_LIMIT=30;
 const TYPE='all-bridges-burning';
+const encoder=new TextEncoder();
+const utf8Bytes=raw=>encoder.encode(raw).byteLength;
+const exceedsSaveLimit=raw=>raw.length>MAX_SAVE_BYTES||(raw.length*3>MAX_SAVE_BYTES&&utf8Bytes(raw)>MAX_SAVE_BYTES);
 const id=()=>globalThis.crypto?.randomUUID?.()??('abb-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
 const isPlainObject=value=>Boolean(value)&&typeof value==='object'&&!Array.isArray(value);
 const isInt=(value,min,max)=>Number.isInteger(value)&&value>=min&&value<=max;
@@ -3799,9 +3903,44 @@ function checkpointCampaign(entry,label) {
 function encode(collection) {
   return JSON.stringify({type:TYPE,schema:SCHEMA,version:VERSION,...collection});
 }
-function encodeCampaign(entry) {return encode({active:entry.id,campaigns:[entry]});}
+function encodeCampaign(entry) {
+  const raw=encode({active:entry.id,campaigns:[entry]});
+  if(exceedsSaveLimit(raw)) throw Error('This campaign exceeds the '+MAX_SAVE_BYTES/1_000_000+' MB import limit.');
+  return raw;
+}
+function encodeBackupParts(collection) {
+  // Measure each campaign once, then assemble complete schema-2 files.
+  const entries=collection.campaigns.map(campaign=>{
+    const raw=JSON.stringify(campaign);
+    return {id:campaign.id,raw,bytes:utf8Bytes(raw)};
+  });
+  const header=active=>{
+    const {savedAt,exportedAt}=collection;
+    return encode({active,savedAt,exportedAt,campaigns:[]}).slice(0,-2);
+  };
+  // Reserve enough room for any valid active ID, including the first ID of a new part.
+  const longestId=entries.reduce((longest,item)=>item.id.length>(longest?.length??0)?item.id:longest,null);
+  const overhead=utf8Bytes(header(longestId))+2;
+  const parts=[];
+  let batch=[], bytes=overhead;
+  const finishPart=()=>{
+    const active=batch.some(item=>item.id===collection.active)?collection.active:batch[0].id;
+    const raw=header(active)+batch.map(item=>item.raw).join(',')+']}';
+    parts.push({raw,bytes:utf8Bytes(raw),campaigns:batch.length});
+    batch=[];
+    bytes=overhead;
+  };
+  for(const item of entries) {
+    if(item.bytes+overhead>MAX_SAVE_BYTES) throw Error('A campaign exceeds the '+MAX_SAVE_BYTES/1_000_000+' MB import limit. Export other campaigns individually.');
+    if(batch.length&&bytes+1+item.bytes>BACKUP_PART_BYTES) finishPart();
+    bytes+=Number(batch.length>0)+item.bytes;
+    batch.push(item);
+  }
+  if(batch.length) finishPart();
+  return parts;
+}
 function decode(raw,{onDraftRecovery}={}) {
-  if(typeof raw!=='string'||raw.length>16_000_000) throw Error('Save is missing or too large.');
+  if(typeof raw!=='string'||exceedsSaveLimit(raw)) throw Error('Save is missing or too large.');
   const saved=JSON.parse(raw,(key,value)=>{
     if(['__proto__','prototype','constructor'].includes(key)) throw Error('Invalid save field.');
     return value;
@@ -4035,7 +4174,7 @@ function importCopies(collection,incoming) {
   return {...collection,active:copies[index]?.id??copies[0]?.id??collection.active,campaigns:[...collection.campaigns,...copies]};
 }
 function campaignSizes(collection) {
-  return collection.campaigns.map(c=>[c.name,new TextEncoder().encode(JSON.stringify(c)).length]).sort((a,b)=>b[1]-a[1]);
+  return collection.campaigns.map(c=>[c.name,utf8Bytes(JSON.stringify(c))]).sort((a,b)=>b[1]-a[1]);
 }
 const isQuota=error=>['QuotaExceededError','NS_ERROR_DOM_QUOTA_REACHED'].includes(error?.name);
 function createStore(getStorage,locks) {
@@ -4082,13 +4221,14 @@ function createStore(getStorage,locks) {
     catch {return false;}
   }
   async function save(collection,{recover=false}={}) {
-    const raw=encode(collection);
     try {
+      const raw=encode(collection);
       return await serialize(()=>{
         const storage=getStorage();
         if(storage.getItem(STORAGE_KEY)!==expected) return {status:'conflict',backup:backupStatus(storage)};
         if(rejected&&!recover) return {status:'recovery',backup:backupStatus(storage)};
         if(raw===expected) return {status:'saved',backup:backupStatus(storage)};
+        if(exceedsSaveLimit(raw)) return {status:'full',backup:backupStatus(storage)};
         if(rejected) storage.setItem(REJECTED_KEY,rejected);
         const oldBackup=storage.getItem(BACKUP_KEY);
         try {
@@ -4124,7 +4264,7 @@ function createStore(getStorage,locks) {
   };
 }
 
-return {SCHEMA,STORAGE_KEY,BACKUP_KEY,REJECTED_KEY,MAX_CAMPAIGNS,emptyCollection,newCampaign,activeCampaign,addCampaign,renameCampaign,duplicateCampaign,commitCampaign,stepHistory,checkpointCampaign,encode,encodeCampaign,decode,validateDraft,recoverDraft,importCopies,campaignSizes,createStore};
+return {SCHEMA,STORAGE_KEY,BACKUP_KEY,REJECTED_KEY,MAX_CAMPAIGNS,MAX_SAVE_BYTES,utf8Bytes,emptyCollection,newCampaign,activeCampaign,addCampaign,renameCampaign,duplicateCampaign,commitCampaign,stepHistory,checkpointCampaign,encode,encodeCampaign,encodeBackupParts,decode,validateDraft,recoverDraft,importCopies,campaignSizes,createStore};
 },
 "ui-board.js": function(require) {
 const {BORDERS, CAP_NAME, FACTIONS, ISSUE_LABELS, LABEL, MARK, MOOD, NAME, NEAR, SPACE_IDS, SPACES, TYPES, borderName, pop, spaceName, town}=require("data.js");
@@ -4273,7 +4413,7 @@ return {spaceOccupied,scoreStrip,boardCards,checklistKeys,reportHtml,editSpace,e
 "ui-fields.js": function(require) {
 const {BORDERS, EVENTS, FACTIONS, LABEL, MOOD, NAME, NEAR, SPACE_IDS, TOWNS, borderName, eventName, pop, spaceName, town}=require("data.js");
 const {capacity, cells, clone, control, countActive, personality, pools}=require("model.js");
-const {battleStrength, legalRail, rallySize, terrorOptions}=require("actions.js");
+const {battleStrengthDetails, legalRail, politicalCubeChoices, rallySize, terrorOptions}=require("actions.js");
 const {legalCommands, legalSpecials, recycle, redsAgitation}=require("human.js");
 
 const escape = value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
@@ -4408,10 +4548,11 @@ function rowHelperText(g,f,cmd,row) {
     const caps=moving?[...target.caps[f],...movingCaps]:movingCaps.length?movingCaps:src.caps[f];
     const attackCount=count+(moving?Number(row.localCount)||0:0);
     const russians=(Number(row.russian)||0)+(moving?Number(row.localRussian)||0:0);
-    const strength=battleStrength(g,{f,id:row.to,defenders,attackCount,russians,caps,boost:Number(row.boost)||0,bot:false});
+    const {strength,breakdown}=battleStrengthDetails(g,{f,id:row.to,defenders,attackCount,russians,caps,boost:Number(row.boost)||0,bot:false});
     const rowCost=(row.from===row.to?1:Math.ceil(count/3))+(Number(row.boost)||0);
     const railHint=moving&&!legalRail(g,row.from,row.to)?' · No usable rail link':moving&&!movingCaps.includes('train')?' · Select a Train to move':'';
-    return 'Origin '+spaceName(row.from)+': '+src[f+'A']+' active, '+src[f+'I']+' inactive'+(f==='r'?', '+src.u+' Russian':'')+' · Estimated Strength '+strength+' · Cost '+rowCost+railHint;
+    return 'Origin '+spaceName(row.from)+': '+src[f+'A']+' active, '+src[f+'I']+' inactive'+(f==='r'?', '+src.u+' Russian':'')+
+      ' · Estimated Strength '+strength+' ('+breakdown+') · Cost '+rowCost+railHint;
   }
   if(cmd==='March'&&g.board[row.from]) {
     const src=g.board[row.from], count=Math.max(1,Number(row.count)||1);
@@ -4531,10 +4672,16 @@ function specialFields(g,f,s,base) {
   if(selected==='Dialogue') return select('Space',base+'.id',s.id,spaceOptions(),{empty:'Choose space'})+
     select('Dialogue option',base+'.option',s.option,[['shift','Shift toward Neutral'],['replace','Replace an Inactive Cell']],{refresh:true})+
     (s.option==='replace'?select('Enemy faction',base+'.side',s.side,sides(['r','s'])):'');
-  if(selected==='Personality') return select('Personality option',base+'.option',s.option,[['place','Place in a Town'],...(g.phase===2?[['earn','Use News to gain Resources'],['lower','Use News to lower Polarization']]:[])],{refresh:true})+
-    select('Space',base+'.id',s.id,spaceOptions(s.option==='place'?TOWNS:SPACE_IDS),{empty:'Choose space'})+
-    (s.option!=='place'?select('Held News',base+'.token',s.token,g.news.filter(x=>x.owner==='m').map(x=>[x.id,'News '+x.id+' · '+spaceName(x.space)]),{empty:'Choose News',number:true})+
-    select('Place cube',base+'.side',s.side,cubeOptions):'');
+  if(selected==='Personality') {
+    const choices=politicalCubeChoices(g);
+    const option=select('Personality option',base+'.option',s.option,[['place','Place in a Town'],...(g.phase===2?[['earn','Use News to gain Resources'],['lower','Use News to lower Polarization']]:[])],{refresh:true});
+    const space=select('Space',base+'.id',s.id,spaceOptions(s.option==='place'?TOWNS:SPACE_IDS),{empty:'Choose space'});
+    if(s.option==='place') return option+space;
+    const news=select('Held News',base+'.token',s.token,g.news.filter(x=>x.owner==='m').map(x=>[x.id,'News '+x.id+' · '+spaceName(x.space)]),{empty:'Choose News',number:true});
+    const cube=choices.length?select('Place cube',base+'.side',s.side,cubeOptions.filter(([side])=>choices.includes(side))):
+      '<p class="quiet">Use News for the selected reward. The Political Display is unavailable.</p>';
+    return option+space+news+cube;
+  }
   return '';
 }
 const specialDefaults={Prepare:'marker',Personality:'place',Dialogue:'shift','Foreign Relations':'raise'};
@@ -4828,11 +4975,11 @@ function resourceRow(g) {
 return {turnStatus,sequenceHtml,agitationSummaryHtml,turnBody,actionSummary,resourceRow};
 },
 "ui.js": function(require) {
-const {FACTIONS, NAME, NEAR, SPACES, SPACE_IDS, VERSION, spaceName}=require("data.js");
+const {FACTIONS, NAME, NEAR, SPACES, SPACE_IDS, VERSION, eventName, spaceName}=require("data.js");
 const {boardDiff, cells, clone, newGame, newsAt}=require("model.js");
 const {actor}=require("sequence.js");
 const {preview}=require("engine.js");
-const {STORAGE_KEY, activeCampaign, addCampaign, campaignSizes, checkpointCampaign, commitCampaign, createStore, decode, duplicateCampaign, encode, encodeCampaign, importCopies, newCampaign, recoverDraft, renameCampaign, stepHistory, validateDraft}=require("storage.js");
+const {MAX_SAVE_BYTES, STORAGE_KEY, activeCampaign, addCampaign, campaignSizes, checkpointCampaign, commitCampaign, createStore, decode, duplicateCampaign, encodeBackupParts, encodeCampaign, importCopies, newCampaign, recoverDraft, renameCampaign, stepHistory, validateDraft}=require("storage.js");
 const {availableTable, boardCards, checklistKeys, editSpace, editorHtml, reportHtml, scoreStrip, spaceOccupied}=require("ui-board.js");
 const {actionSummary, agitationSummaryHtml, resourceRow, sequenceHtml, turnBody, turnStatus}=require("ui-turn.js");
 const {btn, check, checks, commandSummaryHtml, ensure, escape, group, lineInput, makeRow, numeric, resetSpecial, rowHelperText, select, spaceOptions}=require("ui-fields.js");
@@ -4846,6 +4993,7 @@ const recoveredMessage='Recovered saved campaign. Damaged form fields were clear
 let pendingWrite=null, changeSerial=0, writtenSerial=0, message=boot.recoveredDraft?recoveredMessage:'', faulty='', switchFocus=null, importInput=null;
 let draftNew={name:'',humans:['r'],mode:'physical',seed:randomSeed(),checkpoint:true};
 let renameState={id:null,name:''}, exportedAt=collection.exportedAt;
+let preparedBackup=null;
 let showNew=!collection.active, confirm=null, remote=false;
 const entry=()=>activeCampaign(collection);
 const game=()=>entry()?.game;
@@ -4879,7 +5027,8 @@ function storageAlert() {
   if(status==='unavailable'&&entry()) return '<div class="notice warn" role="alert">Local storage is unavailable in this browser view. Export your campaign before closing this tab.</div>';
   return '';
 }
-function changed() {
+function changed({keepPreparedBackup=false}={}) {
+  if(!keepPreparedBackup) preparedBackup=null;
   changeSerial++;
   clearTimeout(pendingWrite);
   pendingWrite=setTimeout(()=>{void saveNow();},180);
@@ -4995,10 +5144,12 @@ function turnHtml(c) {
   const g=c.game;
   const trail=g.changedSpaces??[];
   const last=c.last;
+  const checklistCard=c.undo.at(-1)?.game.current;
   return '<div class="turn-layout"><section class="turn-main"><div class="card context"><p class="eyebrow">'+escape(actionSummary(g))+'</p>'+sequenceHtml(g)+resourceRow(g)+'</div>'+
     '<section class="card action-card" id="action-card"><div class="section-title"><h1>'+escape(turnStatus(g))+'</h1></div>'+
     (activePreview?.screen==='turn'?previewHtml(activePreview.plan):turnBody(g,c.draft))+'</section>'+
     (last?'<details class="card receipt" id="tabletop-checklist" data-detail-key="tabletop-checklist" '+(last.diff.spaces.length||last.diff.tracks.length?'open':'')+'><summary>Tabletop checklist · '+escape(last.title)+'</summary>'+
+      '<p class="quiet">'+escape(c.name)+' · '+escape(eventName(checklistCard??g.current))+' · v'+VERSION+'</p>'+
       (last.diff.spaces.length||last.diff.tracks.length?'<p class="quiet">Match these counts and markers on the physical board before continuing.</p>':'')+reportHtml(last,{applied:true,checkedItems:c.draft.checkedItems??[]})+'</details>':'')+
     '</section><aside class="turn-side"><div class="card compact"><h2>Board tracks</h2>'+scoreStrip(g)+'</div>'+
     '<div class="card compact"><h2>History</h2><div class="button-stack">'+
@@ -5076,8 +5227,19 @@ function campaignHtml() {
   const checkpoint=c?.checkpoints.length?'<details class="inline" data-detail-key="campaign-checkpoints"><summary>Campaign checkpoints · '+c.checkpoints.length+'</summary>'+
     c.checkpoints.map((cp,i)=>'<div class="line checkpoint"><span>'+escape(cp.label)+'</span>'+btn('restore-checkpoint','Restore as new history step',{value:i,kind:'subtle small'})+'</div>').join('')+'</details>':'';
   const dialog=confirm?'<div class="notice warn"><strong>'+escape(confirm.text)+'</strong><div class="controls">'+btn('confirm','Confirm',{kind:'primary'})+btn('cancel-confirm','Cancel',{kind:'subtle'})+'</div></div>':'';
-  return '<section class="card"><div class="section-title"><h1>Campaigns</h1></div>'+controls+dialog+(list?'<div class="campaign-list">'+list+'</div>':'<p class="quiet">Start a campaign or import a saved one.</p>')+checkpoint+'</section>'+
+  return '<section class="card"><div class="section-title"><h1>Campaigns</h1></div>'+controls+dialog+backupDownloadsHtml()+(list?'<div class="campaign-list">'+list+'</div>':'<p class="quiet">Start a campaign or import a saved one.</p>')+checkpoint+'</section>'+
     form+'<section class="card compact" id="backup-panel">'+backupHtml()+'</section>';
+}
+function sizeLabel(bytes) {
+  return bytes>=1_000_000?(bytes/1_000_000).toFixed(1)+' MB':Math.ceil(bytes/1024)+' KB';
+}
+function backupDownloadsHtml() {
+  if(!preparedBackup) return '';
+  const parts=preparedBackup.parts;
+  return '<section class="inline"><h2>Backup downloads</h2><p class="quiet">Prepared '+escape(formatStamp(preparedBackup.createdAt))+'. Download every part to keep the full collection. Import the files one at a time.</p>'+
+    parts.map((part,index)=>'<div class="line">'+btn('export-part','Download part '+(index+1)+' of '+parts.length,{value:index,kind:'subtle small'})+
+      '<span class="quiet">'+part.campaigns+' campaigns · '+sizeLabel(part.bytes)+'</span></div>').join('')+
+    '<div class="controls">'+btn('close-backup-downloads','Close backup downloads',{kind:'subtle small'})+'</div></section>';
 }
 function backupHtml() {
   const sizes=campaignSizes(collection);
@@ -5090,7 +5252,7 @@ function backupHtml() {
     (status==='recovery'?btn('replace-recovery','Use this workspace as the active save',{kind:'subtle'}):'')+'</div>';
   return '<h2>Save and backup</h2><p id="backup-state">'+(backup?'Previous local save available':'No previous local save')+(timestamps?' · '+escape(timestamps):'')+'</p>'+
     '<p class="quiet">Exports include the board, eligibility, unfinished choices, and random state. Import adds copies to this browser.</p>'+recovery+
-    (sizes.length?'<details class="inline" data-detail-key="campaign-sizes"><summary>Local campaign sizes</summary>'+sizes.map(([name,bytes])=>'<div class="line"><span>'+escape(name)+'</span><span>'+Math.ceil(bytes/1024)+' KB</span></div>').join('')+'</details>':'');
+    (sizes.length?'<details class="inline" data-detail-key="campaign-sizes"><summary>Local campaign sizes · '+sizeLabel(sizes.reduce((total,[,bytes])=>total+bytes,0))+'</summary>'+sizes.map(([name,bytes])=>'<div class="line"><span>'+escape(name)+'</span><span>'+sizeLabel(bytes)+'</span></div>').join('')+'</details>':'');
 }
 function paintBackup() {
   const panel=document.getElementById('backup-panel');
@@ -5350,9 +5512,16 @@ function download(raw,filename) {
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 const safeName=value=>String(value).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,65)||'campaign';
+function recordExport() {
+  exportedAt=new Date().toISOString();
+  if(status==='saved'&&changeSerial===writtenSerial) {
+    changed({keepPreparedBackup:true});
+    void saveNow();
+  }
+}
 async function importFile(file) {
   try {
-    if(file.size>16_000_000) throw Error('This save file is too large.');
+    if(file.size>MAX_SAVE_BYTES) throw Error('This save file is too large.');
     let recoveredDraft=false;
     const incoming=decode(await file.text(),{onDraftRecovery:()=>{recoveredDraft=true;}});
     if(!incoming.campaigns.length) throw Error('The file contains no campaigns.');
@@ -5384,6 +5553,7 @@ function doConfirm() {
   if(choice?.type==='reload') {
     const opened=store.open();
     collection=opened.collection;
+    preparedBackup=null;
     exportedAt=collection.exportedAt;
     status=opened.status;
     backup=opened.backup;
@@ -5550,15 +5720,29 @@ root.addEventListener('click',event=>{
     } else if(action==='export-one') {
       const item=collection.campaigns.find(x=>x.id===value);
       download(encodeCampaign(item),'abb-'+safeName(item.name)+'.json');
-      exportedAt=new Date().toISOString();
+      recordExport();
       message='Campaign export prepared.';
-      if(status==='saved'&&changeSerial===writtenSerial) { changed(); void saveNow(); }
       refresh();
     } else if(action==='export-all') {
-      download(encode(collection),'abb-campaigns.json');
-      exportedAt=new Date().toISOString();
-      message='Campaign collection export prepared.';
-      if(status==='saved'&&changeSerial===writtenSerial) { changed(); void saveNow(); }
+      const parts=encodeBackupParts(collection);
+      preparedBackup=null;
+      if(parts.length===1) {
+        download(parts[0].raw,'abb-campaigns.json');
+        recordExport();
+        message='Campaign collection export prepared.';
+      } else {
+        preparedBackup={parts,createdAt:new Date().toISOString()};
+      }
+      refresh();
+    } else if(action==='export-part') {
+      const {parts,createdAt}=preparedBackup;
+      const stamp=createdAt.slice(0,19).replace(/:/g,'-');
+      download(parts[Number(value)].raw,'abb-campaigns-'+stamp+'-part-'+(Number(value)+1)+'-of-'+parts.length+'.json');
+      recordExport();
+      message='Backup part '+(Number(value)+1)+' prepared.';
+      refresh();
+    } else if(action==='close-backup-downloads') {
+      preparedBackup=null;
       refresh();
     } else if(action==='import') importInput.click();
     else if(action==='retry') void saveNow();
