@@ -1,0 +1,357 @@
+{
+  "reviewedAt": "2026-11-13",
+  "baseline": "b331ebab928d734d99cd086a30c4e944808eb066",
+  "audit": "f842ea23c7f5c58dc1aa7498ddac8ef81f86ea11",
+  "testEnvironment": {
+    "node": "24.22.1",
+    "chromium": "153.0.8010.0",
+    "offline": true,
+    "seedRange": [
+      700,
+      747
+    ],
+    "humanConfigurations": 6
+  },
+  "candidates": {
+    "gemini": {
+      "uploadSHA256": "9681317142bb1582abc5712c4698d14a7b4f7d6666d80018914d18426fdc9fd6",
+      "htmlSHA256": "4e3720b379cbca524f854c299edd73a755e356dcb5e5f430d189cda8ff846e2b",
+      "suppliedUnit": {
+        "passed": 3,
+        "total": 3
+      },
+      "suppliedAudit": {
+        "passed": 11,
+        "total": 11
+      },
+      "projectRegression": {
+        "passed": 145,
+        "total": 148
+      },
+      "projectRegressionAcceptingStrengthBreakdown": {
+        "passed": 148,
+        "total": 148
+      },
+      "priorBrowser": {
+        "passed": 9,
+        "total": 10
+      },
+      "referenceSavesAcceptingStrengthBreakdown": {
+        "passed": 9,
+        "total": 9
+      },
+      "build": "Byte-identical direct rebuild. Legacy builder output path unsupported.",
+      "independentSecondAudit": {
+        "passed": 10,
+        "total": 10
+      },
+      "campaignConsistency": {
+        "stats": {
+          "campaigns": 288,
+          "steps": 50666,
+          "phaseII": 254,
+          "finalRound": 202,
+          "manualEvents": 376,
+          "manualRevolts": 0,
+          "eventChoices": 30,
+          "checkpoints": 2345
+        },
+        "rows": [
+          {
+            "humans": "r",
+            "campaigns": 48,
+            "steps": 8508,
+            "phaseII": 45,
+            "finalRound": 37
+          },
+          {
+            "humans": "s",
+            "campaigns": 48,
+            "steps": 8113,
+            "phaseII": 45,
+            "finalRound": 31
+          },
+          {
+            "humans": "m",
+            "campaigns": 48,
+            "steps": 9603,
+            "phaseII": 48,
+            "finalRound": 47
+          },
+          {
+            "humans": "r+s",
+            "campaigns": 48,
+            "steps": 5574,
+            "phaseII": 24,
+            "finalRound": 2
+          },
+          {
+            "humans": "r+m",
+            "campaigns": 48,
+            "steps": 9682,
+            "phaseII": 46,
+            "finalRound": 44
+          },
+          {
+            "humans": "s+m",
+            "campaigns": 48,
+            "steps": 9186,
+            "phaseII": 46,
+            "finalRound": 41
+          }
+        ]
+      },
+      "targetedEngineObservations": {
+        "version": "0.10.5",
+        "march": {
+          "originAlsoDestination": {
+            "error": "Enter each movement group once and use each destination once. Record mixed or converging groups in the tabletop editor."
+          },
+          "originAlsoDestinationTabletop": {
+            "error": "Enter each movement group once and use each destination once. Record mixed or converging groups in the tabletop editor."
+          },
+          "sharedDestination": {
+            "title": "Senate · March + Prepare",
+            "log": [
+              "#59 March (§8.4.6) · execute",
+              "Prepare: repair closest to Senate Train · Häme / Mikkelin lääni",
+              "#59 · Select March group (priority 1) · Mikkelin lääni",
+              "#59 · Skipped group(s): Karelia (priority 2, lower group priority)",
+              "March: apply #59 movement and destination priorities (priority 4) · Mikkelin lääni → Uusimaa (3 Cells)",
+              "#59 · Select March group (priority 2) · Karelia",
+              "March: apply #59 movement and destination priorities (priority 4) · Karelia → Uusimaa (3 Cells)"
+            ],
+            "cells": {
+              "hel": 0,
+              "mik": 1,
+              "kar": 1,
+              "uus": 6
+            }
+          }
+        },
+        "importAtCapacity": {
+          "result": "accepted",
+          "count": 250,
+          "resourcesBefore": 12,
+          "resourcesAfter": 5,
+          "draftAfter": {}
+        }
+      }
+    },
+    "notebookLM": {
+      "uploadSHA256": "6940967f3e2e70b6fe314c6d2a12355cf9d6c7e5e4919e018673e5fb63c806a1",
+      "htmlSHA256": "6940967f3e2e70b6fe314c6d2a12355cf9d6c7e5e4919e018673e5fb63c806a1",
+      "projectRegression": {
+        "passed": 148,
+        "total": 148
+      },
+      "priorBrowser": {
+        "passed": 5,
+        "total": 10
+      },
+      "browserWithStorageBindingsRestored": {
+        "passed": 10,
+        "total": 10
+      },
+      "referenceSavesWithStorageBindingsRestored": {
+        "passed": 9,
+        "total": 9
+      },
+      "independentSecondAudit": {
+        "passed": 10,
+        "total": 10
+      },
+      "campaignConsistency": {
+        "stats": {
+          "campaigns": 288,
+          "steps": 50670,
+          "phaseII": 254,
+          "finalRound": 202,
+          "manualEvents": 376,
+          "manualRevolts": 0,
+          "eventChoices": 30,
+          "checkpoints": 2344
+        },
+        "rows": [
+          {
+            "humans": "r",
+            "campaigns": 48,
+            "steps": 8505,
+            "phaseII": 45,
+            "finalRound": 37
+          },
+          {
+            "humans": "s",
+            "campaigns": 48,
+            "steps": 8113,
+            "phaseII": 45,
+            "finalRound": 31
+          },
+          {
+            "humans": "m",
+            "campaigns": 48,
+            "steps": 9611,
+            "phaseII": 48,
+            "finalRound": 47
+          },
+          {
+            "humans": "r+s",
+            "campaigns": 48,
+            "steps": 5574,
+            "phaseII": 24,
+            "finalRound": 2
+          },
+          {
+            "humans": "r+m",
+            "campaigns": 48,
+            "steps": 9681,
+            "phaseII": 46,
+            "finalRound": 44
+          },
+          {
+            "humans": "s+m",
+            "campaigns": 48,
+            "steps": 9186,
+            "phaseII": 46,
+            "finalRound": 41
+          }
+        ]
+      },
+      "targetedEngineObservations": {
+        "version": "0.10.5",
+        "march": {
+          "originAlsoDestination": {
+            "title": "Senate · March + Prepare",
+            "log": [
+              "#59 March (§8.4.6) · execute",
+              "Prepare: repair closest to Senate Train · Häme / Mikkelin lääni",
+              "#59 · Select March group · Mikkelin lääni",
+              "March: apply #59 movement and destination priorities · Mikkelin lääni → Uusimaa (3 Cells)"
+            ],
+            "cells": {
+              "hel": 0,
+              "mik": 1,
+              "kar": 0,
+              "uus": 7
+            }
+          },
+          "originAlsoDestinationTabletop": {
+            "title": "Senate · #59 March · Open tabletop entry",
+            "log": [
+              "#59 March (§8.4.6) · execute"
+            ],
+            "cells": {
+              "hel": 0,
+              "mik": 4,
+              "kar": 0,
+              "uus": 4
+            }
+          },
+          "sharedDestination": {
+            "title": "Senate · March + Prepare",
+            "log": [
+              "#59 March (§8.4.6) · execute",
+              "Prepare: repair closest to Senate Train · Häme / Mikkelin lääni",
+              "#59 · Select March group · Mikkelin lääni",
+              "March: apply #59 movement and destination priorities · Mikkelin lääni → Uusimaa (3 Cells)"
+            ],
+            "cells": {
+              "hel": 0,
+              "mik": 1,
+              "kar": 4,
+              "uus": 3
+            }
+          }
+        },
+        "importAtCapacity": {
+          "result": "rejected",
+          "error": "This workspace can hold up to 250 campaigns. Export and remove a campaign to make room.",
+          "resourcesAfter": 12
+        },
+        "splitByteLimit": {
+          "limit": 206396,
+          "partCount": 1,
+          "bytes": [
+            206904
+          ]
+        }
+      }
+    }
+  },
+  "baselineTargetedObservations": {
+    "version": "0.10.4",
+    "march": {
+      "originAlsoDestination": {
+        "title": "Senate · March + Prepare",
+        "log": [
+          "#59 March (§8.4.6) · execute",
+          "Prepare: repair closest to Senate Train · Häme / Mikkelin lääni",
+          "#59 · Select March group · Mikkelin lääni",
+          "March: apply #59 movement and destination priorities · Mikkelin lääni → Uusimaa (3 Cells)"
+        ],
+        "cells": {
+          "hel": 0,
+          "mik": 1,
+          "kar": 0,
+          "uus": 7
+        }
+      },
+      "originAlsoDestinationTabletop": {
+        "title": "Senate · #59 March · Open tabletop entry",
+        "log": [
+          "#59 March (§8.4.6) · execute"
+        ],
+        "cells": {
+          "hel": 0,
+          "mik": 4,
+          "kar": 0,
+          "uus": 4
+        }
+      },
+      "sharedDestination": {
+        "title": "Senate · March + Prepare",
+        "log": [
+          "#59 March (§8.4.6) · execute",
+          "Prepare: repair closest to Senate Train · Häme / Mikkelin lääni",
+          "#59 · Select March group · Mikkelin lääni",
+          "March: apply #59 movement and destination priorities · Mikkelin lääni → Uusimaa (3 Cells)",
+          "#59 · Select March group · Karelia",
+          "March: apply #59 movement and destination priorities · Karelia → Uusimaa (3 Cells)"
+        ],
+        "cells": {
+          "hel": 0,
+          "mik": 1,
+          "kar": 1,
+          "uus": 6
+        }
+      }
+    },
+    "importAtCapacity": {
+      "result": "rejected",
+      "error": "This workspace can hold up to 250 campaigns. Export and remove a campaign to make room.",
+      "resourcesAfter": 12
+    }
+  },
+  "targetedBrowserObservations": {
+    "notebookSaveControls": {
+      "import": "Import failed. MAX_SAVE_BYTES is not defined",
+      "exportAll": "splitCollection is not defined"
+    },
+    "geminiMarch": {
+      "error": "Enter each movement group once and use each destination once. Record mixed or converging groups in the tabletop editor.",
+      "preservedOriginal": true
+    },
+    "geminiOldExport": {
+      "resourcesBefore": 12,
+      "resourcesAfter": 5,
+      "campaigns": 250,
+      "importNotice": "Imported 1 campaign copy."
+    },
+    "geminiLargeBackup": {
+      "bytes": 16533228,
+      "campaignsRestored": 160,
+      "exportSeconds": 10.3,
+      "localSaveStatus": "Storage full · unsaved"
+    }
+  }
+}
