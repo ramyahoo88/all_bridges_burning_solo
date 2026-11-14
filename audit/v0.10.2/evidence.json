@@ -1,0 +1,137 @@
+{
+  "release": "0.10.2",
+  "commit": "0b57629bbe8ff5aaf3fb1ee4484533777d8c2249",
+  "reviewDate": "2026-11-13",
+  "reviewTimezone": "America/Chicago",
+  "htmlSha256": "f3237c8b44fb01dc906035b577c5e36f65e386566b9b55a2384f33ba7432b2eb",
+  "build": {
+    "deterministic": true,
+    "checksumMatches": true
+  },
+  "baselineUnitTests": {
+    "passed": 132,
+    "failed": 0
+  },
+  "baselineBrowser": {
+    "chromium": "153.0.8010.0",
+    "suitesPassed": 8,
+    "referenceSaves": 9,
+    "platform": "Linux",
+    "phoneViewport": [
+      393,
+      852
+    ],
+    "offline": true,
+    "origin": "file://"
+  },
+  "stress": {
+    "seedStart": 700,
+    "seedEnd": 747,
+    "stats": {
+      "campaigns": 288,
+      "steps": 50447,
+      "phaseII": 254,
+      "finalRound": 199,
+      "manualEvents": 371,
+      "manualRevolts": 0,
+      "eventChoices": 30,
+      "checkpoints": 2337
+    },
+    "rows": [
+      {
+        "humans": "r",
+        "campaigns": 48,
+        "steps": 8246,
+        "phaseII": 45,
+        "finalRound": 33
+      },
+      {
+        "humans": "s",
+        "campaigns": 48,
+        "steps": 8099,
+        "phaseII": 45,
+        "finalRound": 31
+      },
+      {
+        "humans": "m",
+        "campaigns": 48,
+        "steps": 9613,
+        "phaseII": 48,
+        "finalRound": 47
+      },
+      {
+        "humans": "r+s",
+        "campaigns": 48,
+        "steps": 5620,
+        "phaseII": 24,
+        "finalRound": 3
+      },
+      {
+        "humans": "r+m",
+        "campaigns": 48,
+        "steps": 9661,
+        "phaseII": 46,
+        "finalRound": 44
+      },
+      {
+        "humans": "s+m",
+        "campaigns": 48,
+        "steps": 9208,
+        "phaseII": 46,
+        "finalRound": 41
+      }
+    ],
+    "limitations": "Simple Pass/Rally human policy; physical Event choices are not simulated. Not a balance or skilled-player evaluation."
+  },
+  "auditExpectations": {
+    "passed": 0,
+    "failed": 12,
+    "expectedExitCode": 1,
+    "findingCount": 9,
+    "cases": [
+      "F1: German attackers do not suffer Cell-only attrition",
+      "F2a: Germany advances toward a Russian-only enemy",
+      "F2b: Germany takes no March when no enemy remains",
+      "F2c: Germany gets closer when Reds are more than two spaces away",
+      "F3a: Senate March can use a smaller group to preserve Town Control",
+      "F3b: Senate Train Attack can use a smaller group to preserve Town Control",
+      "F4: Senate selects its Capability group before an ordinary group",
+      "F5: a Captured Moderates Cell cannot Message again in the same Command",
+      "F6: human Activism cannot repeat a space while omitting an eligible space",
+      "F7: Event \\#10 still raises Vassalage if its Capability cannot be placed",
+      "F8: a malformed imported Command draft is rejected or repaired before use",
+      "F9: a staged Unresolved Issue stays Unresolved when the editor rerenders"
+    ]
+  },
+  "additionalBrowserObservations": [
+    {
+      "id": "F6",
+      "helsinkiActive": 3,
+      "tampereActive": 0,
+      "die": 3,
+      "applied": true
+    },
+    {
+      "id": "F8",
+      "draftRows": null,
+      "persisted": true,
+      "headingsAfterReload": 0,
+      "pageError": "Cannot read properties of null (reading 'map')",
+      "rawSaveBytesRemain": true
+    },
+    {
+      "id": "F9",
+      "storedIssueDraft": null,
+      "displayedIssue": "r"
+    },
+    {
+      "id": "Q4",
+      "focusAfterCommandChange": "BODY"
+    }
+  ],
+  "unperformed": [
+    "Physical Android testing",
+    "Tabletop playtesting",
+    "Purposeful-human policy balance study"
+  ]
+}
