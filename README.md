@@ -1,4 +1,4 @@
-# All Bridges Burning Solo Companion v0.10.6
+# All Bridges Burning Solo Companion v0.10.7
 
 This offline companion follows the November 2023 GMT Living Rules and Living Playbook, plus the boxed Solitaire Play Aid, for the single published campaign. It supports Reds, Senate, or Moderates as the lone human, and all three two-human combinations with the remaining faction run by the app. Bring the physical Event cards and boxed Solitaire Play Aid.
 

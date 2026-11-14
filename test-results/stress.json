@@ -1,19 +1,19 @@
 {
   "stats": {
     "campaigns": 288,
-    "steps": 50779,
+    "steps": 50787,
     "phaseII": 254,
     "finalRound": 203,
-    "manualEvents": 373,
+    "manualEvents": 374,
     "manualRevolts": 0,
     "eventChoices": 30,
-    "checkpoints": 2350
+    "checkpoints": 2351
   },
   "rows": [
     {
       "humans": "r",
       "campaigns": 48,
-      "steps": 8614,
+      "steps": 8624,
       "phaseII": 45,
       "finalRound": 38
     },
@@ -27,7 +27,7 @@
     {
       "humans": "m",
       "campaigns": 48,
-      "steps": 9610,
+      "steps": 9608,
       "phaseII": 48,
       "finalRound": 47
     },

@@ -1,4 +1,4 @@
-# Automation coverage · v0.10.6
+# Automation coverage · v0.10.7
 
 | Procedure | Coverage | At the table |
 |---|---|---|

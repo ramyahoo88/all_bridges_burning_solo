@@ -9,6 +9,7 @@ from time import perf_counter
 from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
+VERSION = json.loads((ROOT / "package.json").read_text())["version"]
 KEY = "abb-companion.campaigns"
 BACKUP = KEY + ".backup"
 REJECTED = KEY + ".rejected"
@@ -620,7 +621,7 @@ def march_continuation(browser, uri):
     assert board["uus"]["caps"]["s"] == ["train"] and board["hel"]["caps"]["s"] == []
     assert not state(page)["game"]["sabotage"]
     expect(page.locator("#tabletop-checklist")).to_contain_text("Senate March")
-    expect(page.locator("#tabletop-checklist")).to_contain_text("v0.10.6")
+    expect(page.locator("#tabletop-checklist")).to_contain_text(f"v{VERSION}")
     page.locator('[data-action="undo"]').click()
     saved(page)
     assert state(page)["game"] == before["game"]
@@ -636,7 +637,7 @@ def march_continuation(browser, uri):
     assert guided["sabotage"] == before["game"]["sabotage"]
     assert not errors and not requests, (errors, requests)
     ctx.close()
-    print("PASS #59 continuation, v0.10.5 preview refresh, reload, Apply, Undo and tabletop mode")
+    print("PASS #59 continuation, v0.10.6 preview refresh, reload, Apply, Undo and tabletop mode")
 
 
 def import_at_capacity(browser, uri):

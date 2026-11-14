@@ -1,4 +1,8 @@
-# Release notes · v0.10.6
+# Release notes · v0.10.7
+
+## Changes since v0.10.6
+
+Reds #53 and Senate #59 now compare the best legal destinations of equally ranked March groups before rolling a tie. For #59, group size counts the Cells eligible to move under the five-Cell cap. Generate a fresh preview when resuming an unapplied v0.10.6 action.
 
 ## Changes since v0.10.4
 

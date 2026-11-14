@@ -11,9 +11,9 @@ async function write(name,raw) {
 }
 if(kind==='march') {
   const campaign=newCampaign('Senate March',validateGame(senateMarchPosition()));
-  campaign.draft={intent:{type:'bot'},previewMode:'turn',previewVersion:'0.10.5'};
+  campaign.draft={intent:{type:'bot'},previewMode:'turn',previewVersion:'0.10.6'};
   const old=JSON.parse(encodeCampaign(campaign));
-  old.version='0.10.5';
+  old.version='0.10.6';
   await write('march.json',JSON.stringify(old));
 } else if(kind==='capacity') {
   const collection=emptyCollection();

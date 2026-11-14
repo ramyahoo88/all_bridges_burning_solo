@@ -283,7 +283,7 @@ export function legalMarchGroup(g,f,from,movedInto) {
   const sizes=legalGroupSizes(g,f,from,{moving:true,mode:'march',movedInto});
   if(!sizes.length) return null;
   const caps=unmovedCapabilities(b,movedInto,from,f);
-  return {from,sizes,rank:f==='r'?[b.g>=2?0:1]:[-Number(caps.length>0),-sizes[0],-unmovedCells(b,movedInto,from,f)]};
+  return {from,sizes,rank:f==='r'?[b.g>=2?0:1]:[-Number(caps.length>0),-sizes[0]]};
 }
 export function legalMarchDestinations(g,f,grp,{targets,senatePop,tracker,limit=99}) {
   const {from,sizes}=grp;
@@ -309,7 +309,11 @@ export function legalMarchDestinations(g,f,grp,{targets,senatePop,tracker,limit=
 }
 function selectGroupAndDestination(g,groups,card,command,log) {
   const label='#'+card+' · ';
-  const origin=chooseSpaceRanked(g,groups,grp=>grp.rank,log,label+'Select '+command+' group',grp=>spaceName(grp.from),grp=>grp.from);
+  const rankWithDestination=grp=>{
+    const bestDestination=grp.destinations.map(move=>move.rank).sort(compareRank)[0];
+    return [...grp.rank,...bestDestination];
+  };
+  const origin=chooseSpaceRanked(g,groups,rankWithDestination,log,label+'Select '+command+' group',grp=>spaceName(grp.from),grp=>grp.from);
   if(!origin) return undefined;
   return chooseSpaceRanked(g,origin.destinations,dest=>dest.rank,log,label+'Select '+command+' destination',
     move=>spaceName(move.from)+(move.from===move.to?'':' → '+spaceName(move.to))+' ('+move.count+' Cells)',move=>move.to);
@@ -342,7 +346,7 @@ export function botMarch(g,f,limit,log) {
       if(f==='s') {
         const withCapabilities=destinations.filter(move=>move.caps.length>0);
         if(withCapabilities.length) destinations=withCapabilities;
-        rank=[withCapabilities.length?0:1,-Math.max(...destinations.map(move=>move.count)),group.rank[2]];
+        rank=[withCapabilities.length?0:1,-Math.max(...destinations.map(move=>move.count))];
       }
       return [{from,rank,destinations}];
     });
@@ -393,9 +397,6 @@ export function botAttack(g,f,limit,log,{boost=0,local=false}={}) {
       if(withCapabilities.length) destinations=withCapabilities;
       const rank=[withCapabilities.length?0:1];
       if(f==='s'&&!withCapabilities.length) rank.push(-Math.max(...destinations.map(move=>move.count)));
-      // The Attack card also ranks targets among groups at the same priority.
-      const bestTarget=destinations.map(move=>move.rank).sort(compareRank)[0];
-      rank.push(...bestTarget);
       return [{from,rank,destinations}];
     });
     const selected=selectGroupAndDestination(g,groups,f==='r'?52:58,'Attack',log);
