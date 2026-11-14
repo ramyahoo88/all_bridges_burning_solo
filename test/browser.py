@@ -449,13 +449,150 @@ def configurations(browser, uri):
     print("PASS app-deck setup through real controls for all six published configurations")
 
 
+def quality_of_life(browser, uri, screenshots):
+    ctx, page, errors, requests = new_page(browser, uri, mobile=True)
+    page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
+    setup(page)
+    expect(page.locator("#command-summary")).to_contain_text("Estimated cost 1")
+    data(page, "intent.rows.0.id").select_option("vaa")
+    offset = data(page, "intent.rows.0.offset")
+    offset.fill("2")
+    expect(page.locator("#command-summary")).to_contain_text("Estimated cost 3")
+    expect(offset).to_be_focused()
+    offset.fill("0")
+    data(page, "intent.rows.0.id").select_option("tam")
+    recycling = page.locator('details[data-detail-key="intent-recycle"]')
+    recycling.locator("summary").click()
+    command = data(page, "intent.command")
+    command.focus()
+    command.press("ArrowDown")
+    expect(command).to_have_value("Activism")
+    expect(command).to_be_focused()
+    assert recycling.evaluate("el => el.open")
+    command.select_option("Rally")
+    if screenshots:
+        page.locator("#action-card").screenshot(path=str(screenshots / "phone-command.png"))
+
+    go(page, "Board")
+    expect(page.locator(".space-card")).to_have_count(13)
+    page.get_by_role("button", name="Occupied", exact=False).click()
+    assert 0 < page.locator(".space-card").count() < 13
+    button(page, "Nearby").click()
+    data(page, "boardNear").select_option("ham")
+    expect(page.locator(".space-card").filter(has_text="Tampere")).to_contain_text("Adjacent · Rail")
+    button(page, "All (13)").click()
+    data(page, "boardFilter").fill("hame")
+    expect(page.locator(".space-card")).to_have_count(1)
+    expect(page.locator(".space-card")).to_contain_text("Häme")
+    data(page, "boardFilter").fill("")
+    data(page, "boardFaction").select_option("news")
+    expect(page.locator(".space-card")).to_have_count(0)
+    data(page, "boardFaction").select_option("all")
+
+    for name in ["Helsinki", "Tampere"]:
+        card = page.locator(".space-card").filter(has=page.get_by_role("heading", name=name, exact=True))
+        card.get_by_role("button", name="Correct", exact=True).click()
+        data(page, "edit.spaces." + ("hel" if name == "Helsinki" else "tam") + ".rI").fill("3")
+        confirm_preview(page, "Preview correction")
+    page.get_by_role("button", name="Last step", exact=False).click()
+    expect(page.locator(".space-card")).to_have_count(1)
+    expect(page.locator(".space-card")).to_contain_text("Tampere")
+    go(page, "Turn")
+    receipt = page.locator("#tabletop-checklist")
+    checks = receipt.locator("input[data-check-item]")
+    assert checks.count() > 1
+    checks.first.check()
+    expect(receipt).to_contain_text("Checked 1 of")
+    saved(page)
+    page.reload()
+    expect(checks.first).to_be_checked()
+    button(page, "Check all").click()
+    assert checks.count() == receipt.locator("input[data-check-item]:checked").count()
+    track_details = receipt.locator('details[data-detail-key="receipt-tracks"]')
+    track_details.evaluate("el => { el.open = false; }")
+    page.evaluate("""window.print = () => {
+      window.abbPrinted = document.querySelector('#tabletop-checklist').open &&
+        document.querySelector('[data-detail-key="receipt-tracks"]').open;
+    }""")
+    button(page, "Print checklist").click()
+    assert page.evaluate("window.abbPrinted")
+    assert not track_details.evaluate("el => el.open")
+    page.emulate_media(media="print")
+    expect(receipt).to_be_visible()
+    expect(page.locator(".turn-main .context")).to_be_hidden()
+    page.emulate_media(media="screen")
+    page.get_by_role("button", name="Undo · Board correction", exact=True).click()
+    expect(receipt.locator("input[data-check-item]:checked")).to_have_count(0)
+
+    go(page, "Campaigns")
+    button(page, "Rename").click()
+    data(page, "rename.name").fill("Winter campaign")
+    button(page, "Save name").click()
+    button(page, "Duplicate").click()
+    expect(page.locator(".campaign-row")).to_have_count(2)
+    saved(page)
+    assert state(page)["name"] == "Winter campaign (Copy)"
+    exported = json.loads(export_active(page))["campaigns"][0]
+    assert exported["name"] == "Winter campaign (Copy)"
+    saved(page)
+    page.reload()
+    go(page, "Campaigns")
+    expect(page.locator("#backup-state")).to_contain_text("Last saved")
+    expect(page.locator("#backup-state")).to_contain_text("Last exported")
+    assert page.evaluate("document.documentElement.scrollWidth === innerWidth")
+    assert not errors and not requests, (errors, requests)
+    ctx.close()
+    print("PASS phone controls · live estimates, focus, board filters, saved checklist, print, history, rename and duplicate")
+
+
+def recover_draft(browser, uri):
+    ctx, page, errors, requests = new_page(browser, uri)
+    corpus = json.loads((FILES / "05-pending-news.json").read_text())
+    original = corpus["campaigns"][0]
+    original["draft"]["intent"]["rows"] = None
+    raw = json.dumps(corpus)
+    import_save(page, {"name": "unfinished-form.json", "mimeType": "application/json", "buffer": raw.encode()})
+    expect(page.get_by_role("status").filter(has_text="Damaged form fields were cleared")).to_be_visible()
+    button(page, "Resume").click()
+    expect(page.locator("main h1")).to_contain_text("News")
+    assert state(page)["game"] == original["game"]
+    page.evaluate("([key, raw]) => localStorage.setItem(key, raw)", [KEY, raw])
+    page.reload()
+    expect(page.locator("main h1")).to_contain_text("News")
+    expect(page.get_by_role("status").filter(has_text="Damaged form fields were cleared")).to_be_visible()
+    assert page.evaluate("key => localStorage.getItem(key)", KEY) == raw
+
+    before = original["game"].copy()
+    before["issues"] = ["r", None, None]
+    before["tracks"]["rIssue"] = 1
+    original.update(game=before, draft={})
+    import_save(page, {"name": "resolved-issue.json", "mimeType": "application/json", "buffer": json.dumps(corpus).encode()})
+    button(page, "Resume").click()
+    go(page, "Board")
+    button(page, "Correct board").click()
+    details = page.locator('details[data-detail-key="edit-markers"]')
+    details.locator("summary").click()
+    issue = data(page, "edit.issues.0")
+    expect(issue).to_have_value("r")
+    issue.select_option("")
+    go(page, "Board")
+    button(page, "Correct board").click()
+    details.locator("summary").click()
+    expect(issue).to_have_value("")
+    confirm_preview(page, "Preview correction")
+    assert state(page)["game"]["issues"] == [None, None, None]
+    assert not errors and not requests, (errors, requests)
+    ctx.close()
+    print("PASS malformed draft import and startup recovery, preserved pending game, and cleared Issue after navigation")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--html", type=Path, default=ROOT / "All_Bridges_Burning_Solo.html")
     parser.add_argument("--chromium", help="Chromium executable. Defaults to Playwright Chromium.")
     parser.add_argument("--headless-shell", action="store_true", help="Use single-process flags for a constrained headless shell.")
     parser.add_argument("--screenshots", type=Path)
-    parser.add_argument("--case", choices=["all", "vertical", "imports", "aid-events", "reference-saves", "train-attack", "recovery", "tabs", "configs"], default="all")
+    parser.add_argument("--case", choices=["all", "vertical", "imports", "aid-events", "reference-saves", "train-attack", "recovery", "tabs", "configs", "quality-of-life", "recover-draft"], default="all")
     args = parser.parse_args()
     if args.screenshots:
         args.screenshots.mkdir(parents=True, exist_ok=True)
@@ -471,6 +608,8 @@ def main():
         "recovery": lambda browser, uri: recovery(browser, uri, args.screenshots),
         "tabs": tabs,
         "configs": configurations,
+        "quality-of-life": lambda browser, uri: quality_of_life(browser, uri, args.screenshots),
+        "recover-draft": recover_draft,
     }
     uri = args.html.resolve().as_uri()
     with sync_playwright() as playwright:

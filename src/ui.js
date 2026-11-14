@@ -1,23 +1,27 @@
-import {FACTIONS, NAME, SPACE_IDS, VERSION, spaceName} from './data.js';
-import {boardDiff, clone, newGame} from './model.js';
+import {FACTIONS, NAME, NEAR, SPACES, SPACE_IDS, VERSION, spaceName} from './data.js';
+import {boardDiff, cells, clone, newGame, newsAt} from './model.js';
 import {actor} from './sequence.js';
 import {preview} from './engine.js';
-import {STORAGE_KEY, activeCampaign, campaignSizes, checkpointCampaign, commitCampaign, createStore, decode, encode, encodeCampaign, importCopies, newCampaign, stepHistory} from './storage.js';
-import {availableTable, boardCards, editSpace, editorHtml, reportHtml, scoreStrip} from './ui-board.js';
-import {actionSummary, resourceRow, sequenceHtml, turnBody, turnStatus} from './ui-turn.js';
-import {btn, check, checks, ensure, escape, group, lineInput, makeRow, numeric, resetSpecial, select} from './ui-fields.js';
+import {STORAGE_KEY, activeCampaign, addCampaign, campaignSizes, checkpointCampaign, commitCampaign, createStore, decode, duplicateCampaign, encode, encodeCampaign, importCopies, newCampaign, recoverDraft, renameCampaign, stepHistory, validateDraft} from './storage.js';
+import {availableTable, boardCards, checklistKeys, editSpace, editorHtml, reportHtml, scoreStrip, spaceOccupied} from './ui-board.js';
+import {actionSummary, agitationSummaryHtml, resourceRow, sequenceHtml, turnBody, turnStatus} from './ui-turn.js';
+import {btn, check, checks, commandSummaryHtml, ensure, escape, group, lineInput, makeRow, numeric, resetSpecial, rowHelperText, select, spaceOptions} from './ui-fields.js';
 
 const root=document.getElementById('app');
 const store=createStore(()=>window.localStorage,globalThis.navigator.locks);
 const boot=store.open();
 let collection=boot.collection;
 let status=boot.status, backup=boot.backup, screen=collection.active?'turn':'campaigns', activePreview=null;
-let pendingWrite=null, changeSerial=0, writtenSerial=0, message='', faulty='', switchFocus=null, importInput=null;
+const recoveredMessage='Recovered saved campaign. Damaged form fields were cleared.';
+let pendingWrite=null, changeSerial=0, writtenSerial=0, message=boot.recoveredDraft?recoveredMessage:'', faulty='', switchFocus=null, importInput=null;
 let draftNew={name:'',humans:['r'],mode:'physical',seed:randomSeed(),checkpoint:true};
+let renameState={id:null,name:''}, exportedAt=collection.exportedAt;
 let showNew=!collection.active, confirm=null, remote=false;
 const entry=()=>activeCampaign(collection);
 const game=()=>entry()?.game;
 const focus=selector=>{switchFocus=selector;};
+const formatStamp=value=>new Date(value).toLocaleString();
+const foldName=value=>value.normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
 function randomSeed() {
   return globalThis.crypto?.getRandomValues?.(new Uint32Array(1))[0]??Math.floor(Math.random()*0x100000000);
 }
@@ -48,40 +52,114 @@ function storageAlert() {
 function changed() {
   changeSerial++;
   clearTimeout(pendingWrite);
-  // Write on each meaningful interaction. Use a short delay only for typing bursts.
   pendingWrite=setTimeout(()=>{void saveNow();},180);
   paintStatus();
 }
 async function saveNow(opts={}) {
   clearTimeout(pendingWrite);
   const serial=changeSerial;
-  const result=await store.save(collection,opts);
-  if(result.status==='saved') writtenSerial=Math.max(writtenSerial,serial);
+  const target=collection;
+  const stamp=serial!==writtenSerial?new Date().toISOString():target.savedAt;
+  const snapshot={...target,savedAt:stamp,exportedAt};
+  const result=await store.save(snapshot,opts);
+  if(target!==collection) return result;
+  if(result.status==='saved') {
+    if(stamp&&serial>=writtenSerial) collection.savedAt=stamp;
+    if(snapshot.exportedAt&&serial>=writtenSerial) collection.exportedAt=snapshot.exportedAt;
+    writtenSerial=Math.max(writtenSerial,serial);
+  }
   status=result.status;
   backup=result.backup;
   paintStatus();
   if(screen==='campaigns') paintBackup();
   return result;
 }
+function detailKey(el) {
+  return el.dataset.detailKey||el.id||(el.querySelector('summary')?.textContent?.trim().slice(0,120)??'');
+}
+function captureDomState() {
+  const openMap=new Map();
+  for(const el of root.querySelectorAll('details')) {
+    const key=detailKey(el);
+    if(key) openMap.set(key,el.open);
+  }
+  let activeSelector=null, selection=null;
+  const active=document.activeElement;
+  if(active&&root.contains(active)&&active!==root) {
+    if(active.dataset?.bind) activeSelector='[data-bind="'+CSS.escape(active.dataset.bind)+'"]';
+    else if(active.dataset?.list&&active.value!==undefined) activeSelector='[data-list="'+CSS.escape(active.dataset.list)+'"][value="'+CSS.escape(active.value)+'"]';
+    else if(active.dataset?.checkItem) activeSelector='[data-check-item="'+CSS.escape(active.dataset.checkItem)+'"]';
+    else if(active.dataset?.action) activeSelector='[data-action="'+CSS.escape(active.dataset.action)+'"]'+(active.dataset.value?'[data-value="'+CSS.escape(active.dataset.value)+'"]':'');
+    else if(active.id) activeSelector='#'+CSS.escape(active.id);
+    if(typeof active.selectionStart==='number'&&typeof active.selectionEnd==='number'&&active.type==='text') {
+      selection=[active.selectionStart,active.selectionEnd];
+    }
+  }
+  return {openMap,activeSelector,selection};
+}
+function restoreDomState({openMap,activeSelector,selection},sameScreen) {
+  if(sameScreen&&openMap.size) {
+    for(const el of root.querySelectorAll('details')) {
+      const key=detailKey(el);
+      if(key&&openMap.has(key)) el.open=openMap.get(key);
+    }
+  }
+  const targetSelector=switchFocus??(sameScreen?activeSelector:null);
+  switchFocus=null;
+  if(targetSelector) {
+    const target=root.querySelector(targetSelector);
+    if(target) {
+      target.focus({preventScroll:true});
+      if(selection&&typeof target.setSelectionRange==='function'&&target.type==='text') {
+        try {target.setSelectionRange(selection[0],selection[1]);} catch { /* Non-text input. */ }
+      }
+    }
+  }
+}
+function safeRenderSection(c) {
+  if(screen==='campaigns'||!c) return campaignHtml();
+  if(screen==='guide') return guideHtml();
+  const render=()=>screen==='board'?boardHtml(c.game):screen==='correct'?correctHtml(c.game,c.draft):turnHtml(c);
+  try {
+    validateDraft(c.draft,c.game);
+  } catch {
+    c.draft=recoverDraft(c.draft,c.game);
+    activePreview=null;
+    message=recoveredMessage;
+    changed();
+  }
+  try { return render(); }
+  catch {
+    screen='campaigns';
+    activePreview=null;
+    faulty='This view could not open. You can export the campaign from here.';
+    return campaignHtml();
+  }
+}
+let resetReceiptOpen=false;
 function refresh(next=null) {
+  const sameScreen=next===null||next===screen;
+  const domState=captureDomState();
+  if(resetReceiptOpen) {
+    for(const key of domState.openMap.keys()) {
+      if(key==='tabletop-checklist'||key.startsWith('receipt-')) domState.openMap.delete(key);
+    }
+    resetReceiptOpen=false;
+  }
   if(next) screen=next;
-  const c=entry(), g=c?.game, draft=c?.draft;
-  const section=screen==='campaigns'?campaignHtml():!c?campaignHtml():screen==='board'?boardHtml(g):screen==='correct'?correctHtml(g,draft):
-    screen==='guide'?guideHtml():turnHtml(c);
+  const c=entry();
+  const section=safeRenderSection(c);
   root.innerHTML='<header class="mast"><div class="top-line"><a href="#turn" data-action="screen" data-value="turn" class="wordmark"><span>ALL BRIDGES</span><span>BURNING</span></a>'+
     '<div class="header-meta"><span class="edition">Tabletop companion</span><span id="save-status" data-status="'+escape(status)+'" role="status">'+escape(statusLabel())+'</span></div></div>'+
     '<nav aria-label="Companion tabs">'+[['turn','Turn'],['board','Board'],['campaigns','Campaigns'],['guide','Guide']].map(([id,label])=>
       '<button type="button" data-action="screen" data-value="'+id+'"'+(screen===id||id==='board'&&screen==='correct'?' aria-current="page"':'')+(id==='board'&&!c?' disabled':'')+'>'+label+'</button>').join('')+'</nav></header>'+
-    '<main id="main"><div id="storage-alert">'+storageAlert()+'</div>'+
+    '<main id="main"'+(screen==='turn'&&c?.last?' class="print-receipt"':'')+'><div id="storage-alert">'+storageAlert()+'</div>'+
     (message?'<div class="notice" role="status">'+escape(message)+'</div>':'')+
     (faulty?'<div class="notice error" id="error-note" tabindex="-1" role="alert">'+escape(faulty)+'</div>':'')+
     section+'</main><footer><span>All Bridges Burning · COIN Volume X</span><span>v'+VERSION+' · English</span></footer>'+
     '<input type="file" id="import-file" accept=".json,application/json" hidden>';
   importInput=document.getElementById('import-file');
-  if(switchFocus) {
-    document.querySelector(switchFocus)?.focus({preventScroll:true});
-    switchFocus=null;
-  }
+  restoreDomState(domState,sameScreen);
 }
 function turnHtml(c) {
   const g=c.game;
@@ -90,8 +168,8 @@ function turnHtml(c) {
   return '<div class="turn-layout"><section class="turn-main"><div class="card context"><p class="eyebrow">'+escape(actionSummary(g))+'</p>'+sequenceHtml(g)+resourceRow(g)+'</div>'+
     '<section class="card action-card" id="action-card"><div class="section-title"><h1>'+escape(turnStatus(g))+'</h1></div>'+
     (activePreview?.screen==='turn'?previewHtml(activePreview.plan):turnBody(g,c.draft))+'</section>'+
-    (last?'<details class="card receipt" id="tabletop-checklist" '+(last.diff.spaces.length||last.diff.tracks.length?'open':'')+'><summary>Tabletop checklist · '+escape(last.title)+'</summary>'+
-      (last.diff.spaces.length||last.diff.tracks.length?'<p class="quiet">Match these counts and markers on the physical board before continuing.</p>':'')+reportHtml(last,{applied:true})+'</details>':'')+
+    (last?'<details class="card receipt" id="tabletop-checklist" data-detail-key="tabletop-checklist" '+(last.diff.spaces.length||last.diff.tracks.length?'open':'')+'><summary>Tabletop checklist · '+escape(last.title)+'</summary>'+
+      (last.diff.spaces.length||last.diff.tracks.length?'<p class="quiet">Match these counts and markers on the physical board before continuing.</p>':'')+reportHtml(last,{applied:true,checkedItems:c.draft.checkedItems??[]})+'</details>':'')+
     '</section><aside class="turn-side"><div class="card compact"><h2>Board tracks</h2>'+scoreStrip(g)+'</div>'+
     '<div class="card compact"><h2>History</h2><div class="button-stack">'+
     btn('undo',c.undo.length?'Undo · '+c.undo.at(-1).label:'Undo',{kind:'subtle',disabled:!c.undo.length})+
@@ -106,13 +184,35 @@ function previewHtml(plan) {
     '<div class="controls">'+btn('apply','Apply',{kind:'primary'})+btn('dismiss-preview','Back to choices',{kind:'subtle'})+'</div></section>';
 }
 function boardHtml(g) {
-  const filter=entry().draft.boardFilter??'';
-  const needle=filter.trim().toLocaleLowerCase();
-  const matches=SPACE_IDS.filter(id=>!needle||spaceName(id).toLocaleLowerCase().includes(needle));
+  const c=entry(), draft=c.draft;
+  const filter=draft.boardFilter??'';
+  const scope=draft.boardScope??'all';
+  const changedIds=[...new Set((c.last?.diff.spaces??[]).map(x=>x.id).filter(id=>Object.hasOwn(SPACES,id)))];
+  const nearOrigin=draft.boardNear||(changedIds[0]??'hel');
+  const faction=draft.boardFaction??'all';
+  const needle=foldName(filter.trim());
+  const matches=SPACE_IDS.filter(id=>{
+    if(needle&&!foldName(spaceName(id)).includes(needle)) return false;
+    const b=g.board[id];
+    if(faction==='news'&&!newsAt(g,id).length) return false;
+    if(['g','u'].includes(faction)&&!b[faction]) return false;
+    if(FACTIONS.includes(faction)&&!(cells(b,faction)||(faction==='r'?b.admin:faction==='m'?b.network:0))) return false;
+    if(scope==='occupied') return spaceOccupied(g,id);
+    if(scope==='changed') return changedIds.includes(id);
+    if(scope==='nearby') return id===nearOrigin||NEAR[nearOrigin]?.includes(id);
+    return true;
+  });
+  const scopes=[['all','All ('+SPACE_IDS.length+')'],['occupied','Occupied ('+SPACE_IDS.filter(id=>spaceOccupied(g,id)).length+')'],
+    ['changed','Last step ('+changedIds.length+')'],['nearby','Nearby']];
+  const scopeButtons='<div class="space-tabs" role="group" aria-label="Board space filters">'+scopes.map(([key,label])=>
+    btn('board-scope',label,{value:key,kind:scope===key?'selected small':'subtle small',pressed:scope===key})).join('')+'</div>';
+  const filters=group(select('Pieces to show','boardFaction',faction,[['all','All spaces'],...['r','s','m','g','u'].map(f=>[f,NAME[f]]),['news','News']],{refresh:true})+
+    (scope==='nearby'?select('Spaces adjacent to','boardNear',nearOrigin,spaceOptions(),{refresh:true}):''));
   return '<section class="card"><div class="line"><div><p class="eyebrow">'+escape(actionSummary(g))+'</p><h1>Board</h1></div>'+btn('quick-correct','Correct board',{kind:'subtle'})+'</div>'+
-    scoreStrip(g)+resourceRow(g)+'<details class="inline"><summary>Available Forces</summary>'+availableTable(g)+'</details></section>'+
+    scoreStrip(g)+resourceRow(g)+'<details class="inline" data-detail-key="board-available"><summary>Available Forces</summary>'+availableTable(g)+'</details></section>'+
     '<section class="card"><div class="line"><h2>Spaces</h2>'+lineInput('Find space','boardFilter',filter,{placeholder:'Name a space'})+'</div>'+
-    (matches.length?boardCards(g,matches):'<p class="quiet">No matching space.</p>')+'</section>';
+    scopeButtons+filters+
+    (matches.length?boardCards(g,matches,{changedIds,nearOrigin:scope==='nearby'?nearOrigin:null}):'<p class="quiet">No matching space.</p>')+'</section>';
 }
 function correctHtml(g,draft) {
   const edit=ensure(draft,'edit',{});
@@ -124,11 +224,18 @@ function campaignHtml() {
   const c=entry();
   const controls='<div class="controls">'+btn('new','New campaign',{kind:'primary'})+btn('import','Import save',{kind:'subtle'})+
     btn('export-all','Export all',{kind:'subtle',disabled:collection.campaigns.length===0})+'</div>';
-  const list=collection.campaigns.map(item=>'<div class="campaign-row"><div><strong>'+escape(item.name)+'</strong><p class="quiet">'+
-    escape(item.game.humans.map(f=>NAME[f]).join(' + '))+' · '+escape(actionSummary(item.game))+'</p></div>'+
-    '<div class="controls">'+btn('open-campaign',item.id===c?.id?'Resume':'Open',{value:item.id,kind:'subtle small'})+
-    btn('export-one','Export',{value:item.id,kind:'subtle small'})+
-    btn('ask-delete','Delete',{value:item.id,kind:'subtle small'})+'</div></div>').join('');
+  const list=collection.campaigns.map(item=>{
+    const isRenaming=renameState.id===item.id;
+    return '<div class="campaign-row"><div><strong>'+escape(item.name)+'</strong><p class="quiet">'+
+      escape(item.game.humans.map(f=>NAME[f]).join(' + '))+' · '+escape(actionSummary(item.game))+'</p>'+
+      (isRenaming?'<div class="rename-box">'+lineInput('Campaign name','rename.name',renameState.name,{max:100})+
+        '<div class="controls">'+btn('save-rename','Save name',{value:item.id,kind:'primary small'})+btn('cancel-rename','Cancel',{kind:'subtle small'})+'</div></div>':'')+
+      '</div><div class="controls">'+btn('open-campaign',item.id===c?.id?'Resume':'Open',{value:item.id,kind:'subtle small'})+
+      btn('start-rename','Rename',{value:item.id,kind:'subtle small'})+
+      btn('duplicate-campaign','Duplicate',{value:item.id,kind:'subtle small'})+
+      btn('export-one','Export',{value:item.id,kind:'subtle small'})+
+      btn('ask-delete','Delete',{value:item.id,kind:'subtle small'})+'</div></div>';
+  }).join('');
   const form=showNew?'<section class="card" id="new-campaign"><p class="eyebrow">Full campaign · Living Rules</p><h2>New campaign</h2>'+
     '<p>Choose one human faction for solitaire, or two humans and one bot. Use the physical Event deck or let the app reveal the card IDs.</p>'+
     group(lineInput('Campaign name','new.name',draftNew.name,{placeholder:'Finnish Civil War'})+
@@ -136,7 +243,7 @@ function campaignHtml() {
       numeric('Random seed','new.seed',draftNew.seed,{max:4294967295}))+checks('Human factions · choose one or two','new.humans',draftNew.humans,FACTIONS.map(f=>[f,NAME[f]]))+
     check('Keep a checkpoint after each Propaganda Round','new.checkpoint',draftNew.checkpoint)+
     '<div class="controls">'+btn('create','Create campaign',{kind:'primary'})+btn('randomize','New seed',{kind:'subtle'})+'</div></section>':'';
-  const checkpoint=c?.checkpoints.length?'<details class="inline"><summary>Campaign checkpoints · '+c.checkpoints.length+'</summary>'+
+  const checkpoint=c?.checkpoints.length?'<details class="inline" data-detail-key="campaign-checkpoints"><summary>Campaign checkpoints · '+c.checkpoints.length+'</summary>'+
     c.checkpoints.map((cp,i)=>'<div class="line checkpoint"><span>'+escape(cp.label)+'</span>'+btn('restore-checkpoint','Restore as new history step',{value:i,kind:'subtle small'})+'</div>').join('')+'</details>':'';
   const dialog=confirm?'<div class="notice warn"><strong>'+escape(confirm.text)+'</strong><div class="controls">'+btn('confirm','Confirm',{kind:'primary'})+btn('cancel-confirm','Cancel',{kind:'subtle'})+'</div></div>':'';
   return '<section class="card"><div class="section-title"><h1>Campaigns</h1></div>'+controls+dialog+(list?'<div class="campaign-list">'+list+'</div>':'<p class="quiet">Start a campaign or import a saved one.</p>')+checkpoint+'</section>'+
@@ -144,22 +251,25 @@ function campaignHtml() {
 }
 function backupHtml() {
   const sizes=campaignSizes(collection);
+  const timestamps=[collection.savedAt?'Last saved '+formatStamp(collection.savedAt):null,exportedAt?'Last exported '+formatStamp(exportedAt):null].filter(Boolean).join(' · ');
   const recovery='<div class="controls">'+
     ((status==='conflict'||status==='unavailable'||status==='full')?btn('retry','Retry save',{kind:'subtle'}):'')+
     (status==='conflict'?btn('ask-reload','Load newer local save',{kind:'subtle'}):'')+
     (status==='recovery'||store.hasArchived()?btn('download-recovery','Export unreadable original',{kind:'subtle'}):'')+
     (backup?btn('copy-backup',status==='recovery'?'Restore previous save':'Import previous save as copies',{kind:'subtle'}):'')+
     (status==='recovery'?btn('replace-recovery','Use this workspace as the active save',{kind:'subtle'}):'')+'</div>';
-  return '<h2>Save and backup</h2><p id="backup-state">'+(backup?'Previous local save available':'No previous local save')+'</p>'+
+  return '<h2>Save and backup</h2><p id="backup-state">'+(backup?'Previous local save available':'No previous local save')+(timestamps?' · '+escape(timestamps):'')+'</p>'+
     '<p class="quiet">Exports include the board, eligibility, unfinished choices, and random state. Import adds copies to this browser.</p>'+recovery+
-    (sizes.length?'<details class="inline"><summary>Local campaign sizes</summary>'+sizes.map(([name,bytes])=>'<div class="line"><span>'+escape(name)+'</span><span>'+Math.ceil(bytes/1024)+' KB</span></div>').join('')+'</details>':'');
+    (sizes.length?'<details class="inline" data-detail-key="campaign-sizes"><summary>Local campaign sizes</summary>'+sizes.map(([name,bytes])=>'<div class="line"><span>'+escape(name)+'</span><span>'+Math.ceil(bytes/1024)+' KB</span></div>').join('')+'</details>':'');
 }
 function paintBackup() {
   const panel=document.getElementById('backup-panel');
   if(panel) {
+    const active=panel.contains(document.activeElement)?captureDomState():null;
     const open=panel.querySelector('details[open]');
     panel.innerHTML=backupHtml();
     if(open) panel.querySelector('details')?.setAttribute('open','');
+    if(active?.activeSelector) panel.querySelector(active.activeSelector)?.focus({preventScroll:true});
   }
 }
 function guideHtml() {
@@ -185,6 +295,10 @@ function getPath(path) {
   if(parts[0]==='new') {
     parts.shift();
     return [draftNew,parts];
+  }
+  if(parts[0]==='rename') {
+    parts.shift();
+    return [renameState,parts];
   }
   return [entry()?.draft,parts];
 }
@@ -233,8 +347,37 @@ function editBinding(path,value) {
   }
   return false;
 }
+function updateFormGuidance() {
+  const command=document.getElementById('command-summary');
+  const agitation=document.getElementById('agitation-summary');
+  if(!command&&!agitation) return;
+  const g=game(), intent=entry().draft.intent;
+  const f=g.interrupt?.f??actor(g);
+  if(command) {
+    command.innerHTML=commandSummaryHtml(g,f,intent,intent.action==='limited'||g.interrupt?.kind==='news');
+    for(const hint of root.querySelectorAll('[data-row-hint]')) {
+      const row=at(entry().draft,hint.dataset.rowHint.split('.'));
+      const text=rowHelperText(g,f,intent.command,row);
+      hint.textContent=text;
+      hint.hidden=!text;
+    }
+  }
+  if(agitation) agitation.innerHTML=agitationSummaryHtml(g,f,intent.plans);
+}
 function binding(e) {
-  const target=e.target, path=target.dataset.bind??target.dataset.list;
+  const target=e.target;
+  if(target.dataset?.checkItem) {
+    const c=entry();
+    if(!c) return;
+    const set=new Set(c.draft.checkedItems??[]);
+    if(target.checked) set.add(target.dataset.checkItem);
+    else set.delete(target.dataset.checkItem);
+    c.draft.checkedItems=[...set];
+    changed();
+    refresh();
+    return;
+  }
+  const path=target.dataset.bind??target.dataset.list;
   if(!path) return;
   const [obj,parts]=getPath(path);
   if(!obj) return;
@@ -266,7 +409,10 @@ function binding(e) {
   }
   if(path.includes('.rows.')&&['id','from','to'].includes(last)) {
     const row=at(obj,parts.slice(0,-1));
-    if(last==='id') row.targets='';
+    if(last==='id') {
+      if(obj.intent.command==='Terror') row.targets='';
+      if(obj.intent.command==='Rally') row.offset=0;
+    }
     if(last==='from') {
       row.caps=[];
       row.to='';
@@ -283,15 +429,11 @@ function binding(e) {
     const route=at(obj,parts.slice(0,-1));
     for(let i=Number(last)+1;i<route.length;i++) route[i]='';
   }
-  if(!path.startsWith('new.')) changed();
+  if(!path.startsWith('new.')&&!path.startsWith('rename.')) changed();
   if(Object.hasOwn(target.dataset,'refresh')||path==='boardFilter'||path.endsWith('.special.sites')) {
-    const selector=path==='boardFilter'?'[data-bind="boardFilter"]':null;
-    if(selector) focus(selector);
     refresh();
-    if(selector) {
-      const el=document.querySelector(selector);
-      el?.setSelectionRange(el.value.length,el.value.length);
-    }
+  } else if(path.startsWith('intent.')) {
+    updateFormGuidance();
   }
 }
 root.addEventListener('input',event=>{
@@ -309,12 +451,16 @@ function applyPlan() {
   const {after,title,log,diff}=plan;
   const cardChanged=old.current!==after.current&&old.stage!=='setup';
   after.changedSpaces=[...new Set([...(cardChanged?[]:old.changedSpaces??[]),...diff.spaces.map(x=>x.id)])];
-  // A correction can be made while a human form or an interruption is in progress.
   const beforeDraft=c.draft;
   commitCampaign(c,after,title,{title,log,diff});
+  resetReceiptOpen=true;
+  for(const key of ['boardFilter','boardScope','boardNear','boardFaction']) {
+    if(beforeDraft[key]!==undefined) c.draft[key]=beforeDraft[key];
+  }
   if(origin==='correct') {
     c.draft=clone(beforeDraft);
     delete c.draft.edit;
+    delete c.draft.checkedItems;
     clearPreviewDraft(c.draft);
   }
   if(after.checkpoint&&old.stage==='propaganda'&&old.roundStep==='reset') checkpointCampaign(c,'After Propaganda '+old.round);
@@ -342,7 +488,9 @@ function setPreview(intent,origin) {
   document.getElementById('preview-panel')?.scrollIntoView({block:'nearest'});
 }
 function recoverPreview(target=screen) {
-  const c=entry(), mode=c?.draft.previewMode;
+  const c=entry();
+  if(c) c.draft=recoverDraft(c.draft,c.game);
+  const mode=c?.draft.previewMode;
   if(!mode||target!==mode&&target!=='resume') return target==='resume'?'turn':target;
   if(c.draft.previewVersion!==VERSION) {
     clearPreviewDraft(c.draft);
@@ -356,6 +504,7 @@ function recoverPreview(target=screen) {
     return mode;
   } catch {
     clearPreviewDraft(c.draft);
+    c.draft=recoverDraft(c.draft,c.game);
     return target==='resume'?'turn':target;
   }
 }
@@ -374,11 +523,13 @@ const safeName=value=>String(value).toLowerCase().replace(/[^a-z0-9]+/g,'-').rep
 async function importFile(file) {
   try {
     if(file.size>16_000_000) throw Error('This save file is too large.');
-    const incoming=decode(await file.text());
+    let recoveredDraft=false;
+    const incoming=decode(await file.text(),{onDraftRecovery:()=>{recoveredDraft=true;}});
     if(!incoming.campaigns.length) throw Error('The file contains no campaigns.');
     collection=importCopies(collection,incoming);
     activePreview=null;
     message='Imported '+incoming.campaigns.length+' campaign '+(incoming.campaigns.length===1?'copy.':'copies.');
+    if(recoveredDraft) message+=' Damaged form fields were cleared.';
     faulty='';
     showNew=false;
     changed();
@@ -403,11 +554,12 @@ function doConfirm() {
   if(choice?.type==='reload') {
     const opened=store.open();
     collection=opened.collection;
+    exportedAt=collection.exportedAt;
     status=opened.status;
     backup=opened.backup;
     writtenSerial=changeSerial;
     remote=false;
-    message='Loaded the saved workspace.';
+    message=opened.recoveredDraft?recoveredMessage:'Loaded the saved workspace.';
   }
   if(choice?.type==='recover') {
     changed();
@@ -426,7 +578,7 @@ root.addEventListener('click',event=>{
   try {
     if(action==='screen') {
       activePreview=null;
-      if(c) void saveNow();
+      if(c&&changeSerial!==writtenSerial) void saveNow();
       refresh(value==='turn'&&!c?'campaigns':recoverPreview(value));
     } else if(action==='new') {
       showNew=true;
@@ -438,9 +590,7 @@ root.addEventListener('click',event=>{
     } else if(action==='create') {
       const state=newGame({...draftNew,seed:draftNew.seed===''?randomSeed():Number(draftNew.seed)});
       const name=draftNew.name.trim()||'Full Campaign · '+state.humans.map(f=>NAME[f]).join(' + ');
-      const campaign=newCampaign(name,state);
-      collection.campaigns.push(campaign);
-      collection.active=campaign.id;
+      addCampaign(collection,newCampaign(name,state));
       draftNew={...draftNew,name:'',seed:randomSeed()};
       showNew=false;
       changed();
@@ -453,6 +603,50 @@ root.addEventListener('click',event=>{
       changed();
       void saveNow();
       refresh(recoverPreview('resume'));
+    } else if(action==='start-rename') {
+      const target=collection.campaigns.find(x=>x.id===value);
+      if(!target) throw Error('Campaign not found.');
+      renameState={id:target.id,name:target.name};
+      focus('[data-bind="rename.name"]');
+      refresh('campaigns');
+    } else if(action==='save-rename') {
+      const target=collection.campaigns.find(x=>x.id===value);
+      if(!target) throw Error('Campaign not found.');
+      renameCampaign(target,renameState.name);
+      renameState={id:null,name:''};
+      message='Renamed campaign to '+target.name+'.';
+      changed();
+      void saveNow();
+      refresh('campaigns');
+    } else if(action==='cancel-rename') {
+      renameState={id:null,name:''};
+      refresh('campaigns');
+    } else if(action==='duplicate-campaign') {
+      const copy=duplicateCampaign(collection,value);
+      activePreview=null;
+      message='Duplicated campaign as '+copy.name+'.';
+      changed();
+      void saveNow();
+      refresh('campaigns');
+    } else if(action==='board-scope') {
+      c.draft.boardScope=value;
+      changed();
+      refresh('board');
+    } else if(action==='check-all-adjustments') {
+      c.draft.checkedItems=checklistKeys(c.last);
+      changed();
+      refresh();
+    } else if(action==='clear-adjustments') {
+      c.draft.checkedItems=[];
+      changed();
+      refresh();
+    } else if(action==='print-checklist') {
+      const checklist=document.getElementById('tabletop-checklist');
+      const sections=[checklist,...checklist.querySelectorAll('details[data-detail-key="receipt-tracks"]')];
+      const wasOpen=sections.map(el=>el.open);
+      sections.forEach(el=>{el.open=true;});
+      try { window.print?.(); }
+      finally { sections.forEach((el,index)=>{el.open=wasOpen[index];}); }
     } else if(action==='select-action') {
       const prior=c.draft.intent;
       c.draft.turnForms??={};
@@ -477,6 +671,8 @@ root.addEventListener('click',event=>{
         message=(action==='undo'?'Undid ':'Redid ')+label+'. Check the tabletop position.';
         const diff=boardDiff(previous,c.game);
         c.last={title:(action==='undo'?'Undo':'Redo')+' · '+label,log:[],diff};
+        delete c.draft.checkedItems;
+        resetReceiptOpen=true;
         changed();
         void saveNow();
       }
@@ -524,11 +720,15 @@ root.addEventListener('click',event=>{
     } else if(action==='export-one') {
       const item=collection.campaigns.find(x=>x.id===value);
       download(encodeCampaign(item),'abb-'+safeName(item.name)+'.json');
+      exportedAt=new Date().toISOString();
       message='Campaign export prepared.';
+      if(status==='saved'&&changeSerial===writtenSerial) { changed(); void saveNow(); }
       refresh();
     } else if(action==='export-all') {
       download(encode(collection),'abb-campaigns.json');
+      exportedAt=new Date().toISOString();
       message='Campaign collection export prepared.';
+      if(status==='saved'&&changeSerial===writtenSerial) { changed(); void saveNow(); }
       refresh();
     } else if(action==='import') importInput.click();
     else if(action==='retry') void saveNow();
@@ -546,7 +746,9 @@ root.addEventListener('click',event=>{
       const cp=c.checkpoints[Number(value)];
       const after=clone(cp.game), title='Restore '+cp.label;
       commitCampaign(c,after,title,{title,log:[],diff:boardDiff(g,after)});
-      c.draft=clone(cp.draft);
+      c.draft=recoverDraft(clone(cp.draft),c.game);
+      delete c.draft.checkedItems;
+      resetReceiptOpen=true;
       changed();
       void saveNow();
       refresh('turn');

@@ -1,6 +1,15 @@
-# Release notes · v0.10.2
+# Release notes · v0.10.4
 
-November 13, 2026. This patch addresses the [Claude audit of v0.10.1](Claude_Audit_v0.10.1.md).
+November 13, 2026. This build integrates Gemini's v0.10.3 changes onto the v0.10.2 repository and addresses the nine findings in the [Astra audit](Astra_Audit_v0.10.2.md).
+
+## Changes since the v0.10.2 repository build
+
+- German attackers keep their Troops after removing enemy Cells. German March chooses a route that reduces the distance to the nearest Reds or Russians and stays in place when neither is present.
+- Senate March and Train Attack consider legal groups of three to five Cells. Card #59 selects a group before choosing its destination. A Moderates Cell stays ineligible to Message again after arriving, including when it was Captured or a Special Activity later Activates it.
+- Human Activism can limit the number of Cells it Activates while distributing them as required. Unshaded #10 raises German Vassalage even when the Jaeger cannot be placed.
+- Save recovery clears damaged form fields and preserves valid game progress. The Issue editor displays an explicitly cleared Issue as Unresolved. Create, duplicate, and import share the same campaign limit used when opening saved workspaces.
+- The interface updates Command and Agitation estimates during edits, preserves keyboard focus and expanded sections, and adds Board filters, a printable checklist, campaign renaming and duplication, save and export times, and victory thresholds.
+- Generate a fresh preview for actions saved by an earlier version, including Gemini's v0.10.3. Campaign files retain schema 2.
 
 ## Changes since v0.10.1
 

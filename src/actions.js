@@ -1,8 +1,25 @@
 import { FACTIONS, NEAR, RAIL, edge, spaceName} from './data.js';
 import {addNews, capacity, cells, clamp, cleanSpace, clone, countTerror, flip, human, newsAt, pay, pools} from './model.js';
-import {pick, roll} from './random.js';
+import {chooseSpaceRanked, pick, roll} from './random.js';
 
 export const enemy = f=>FACTIONS.filter(other=>other!==f);
+export function createMoveState() {
+  return {fromUsed:new Set(),toUsed:new Set(),movedInto:{}};
+}
+export const unmovedCount = (b,movedInto,id,key)=>Math.max(0,b[key]-(movedInto[id]?.[key]??0));
+export const unmovedCells = (b,movedInto,id,f='m')=>unmovedCount(b,movedInto,id,f+'A')+unmovedCount(b,movedInto,id,f+'I');
+export function recordMovedInto(movedInto,id,key,count=1) {
+  if(count<=0) return;
+  const arrivals=movedInto[id]??={};
+  arrivals[key]=(arrivals[key]??0)+count;
+}
+export function recordGroupMove(tracker,from,to,{allowSharedDest=false}={}) {
+  if(tracker.fromUsed.has(from)||tracker.toUsed.has(from)||(!allowSharedDest&&(tracker.fromUsed.has(to)||tracker.toUsed.has(to)))) {
+    throw Error('Enter each movement group once and use each destination once. Record mixed or converging groups in the tabletop editor.');
+  }
+  tracker.fromUsed.add(from);
+  tracker.toUsed.add(to);
+}
 export function rallySize(b,f,offset=false) {
   const bonus=f==='r'?-b.support:f==='s'?b.support:0;
   const modifier=f==='m'?Math.abs(b.support):Math.max(0,-bonus)+b[f==='r'?'sTerror':'rTerror'];
@@ -101,14 +118,16 @@ function carryNews(g,f,from,to) {
   const remaining=cells(g.board[from],f);
   for(const token of newsAt(g,from,f).slice(remaining)) token.space=to;
 }
-export function travel(g,f,from,to,opts) {
+export function travel(g,f,from,to,opts,tracker=null) {
   const b=g.board[from], d=g.board[to], count=opts.count;
   if(!NEAR[from]?.includes(to)||!Number.isInteger(count)||count<1||count>cells(b,f)) throw Error('Select an adjacent destination and an available group.');
+  if(tracker) recordGroupMove(tracker,from,to,{allowSharedDest:Boolean(opts.allowSharedDest)});
   const inactive=opts.activeFirst?Math.max(0,count-b[f+'A']):Math.min(count,b[f+'I']);
+  const active=count-inactive;
   b[f+'I']-=inactive;
   d[f+'I']+=inactive;
-  b[f+'A']-=count-inactive;
-  d[f+'A']+=count-inactive;
+  b[f+'A']-=active;
+  d[f+'A']+=active;
   const russian=f==='r'?Math.min(opts.russian??0,b.u,count):0;
   b.u-=russian;
   d.u+=russian;
@@ -121,6 +140,40 @@ export function travel(g,f,from,to,opts) {
   }
   carryNews(g,f,from,to);
   cleanSpace(g,from);
+}
+export function resolveMessageMove(g,log,step,movedInto={}) {
+  const {from,path,wasActive,token=null,carryPerson=false,captureSpace=null,bot=false}=step;
+  const source=g.board[from];
+  source[wasActive?'mA':'mI']--;
+  let to=path.at(-1), captured=false;
+  if(token||carryPerson) {
+    const start=token?path.indexOf(token.space):0;
+    const options=path.slice(1).map((id,index)=>({id,index,dist:Math.abs(index+1-start),threat:Math.max(g.board[id].rA,g.board[id].sA)}));
+    let target;
+    if(bot) {
+      target=chooseSpaceRanked(g,options,x=>[-x.threat,x.dist],null,x=>spaceName(x.id),x=>x.id);
+    } else {
+      const sorted=[...options].sort((a,b)=>b.threat-a.threat||a.dist-b.dist);
+      target=sorted.find(x=>x.id===captureSpace&&x.threat===sorted[0].threat&&x.dist===sorted[0].dist)??sorted[0];
+    }
+    if(target?.threat&&roll(g,log,'Message Capture in '+spaceName(target.id))<=target.threat) {
+      to=target.id;
+      captured=true;
+    }
+    if(token) {
+      token.space=to;
+      token.owner='m';
+    }
+    if(carryPerson) {
+      source.person=false;
+      g.board[to].person=true;
+    }
+  }
+  const status=captured?'mA':'mI';
+  g.board[to][status]++;
+  recordMovedInto(movedInto,to,status,1);
+  cleanSpace(g,from);
+  return {to,captured,status};
 }
 function capStrength(caps) {
   const officer=caps.includes('officer-s');
@@ -193,7 +246,7 @@ export function engage(g,log,{f,id,defenders,attackCount,russians=0,caps=null,bo
     attackerLoss(Math.min(troopsLost,attackCount));
     if(f==='r') b.u-=Math.min(b.u,russians,Math.max(0,troopsLost-attackCount));
     attackerLoss(Math.min(Math.floor(casualties/3),attackA+attackI));
-  } else b.g=Math.max(0,b.g-Math.floor(casualties/3));
+  }
   if(prison) {
     const side=f==='g'?'s':f;
     if(countTerror(b)<2&&pools(g)[side+'Terror']>0) b[side+'Terror']++;

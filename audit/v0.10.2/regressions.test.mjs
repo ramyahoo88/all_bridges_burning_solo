@@ -1,5 +1,4 @@
-// Audit expectations. These fail on the audited v0.10.2 build.
-// Kept outside test/*.test.mjs until the corresponding fixes are implemented.
+// Regression cases first reproduced in v0.10.2. The release test script runs all twelve.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {position} from '../../test/fixtures.mjs';

@@ -1,4 +1,4 @@
-export const VERSION = '0.10.2';
+export const VERSION = '0.10.4';
 export const FACTIONS = ['r', 's', 'm'];
 export const NAME = {r:'Reds', s:'Senate', m:'Moderates', g:'Germany', u:'Russia'};
 export const TYPES = ['cannon','train','officer'];

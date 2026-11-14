@@ -14,3 +14,7 @@ PASS two live file:// tabs · stale save warning and explicit reload
 Chromium 153.0.8010.0
 PASS app-deck setup through real controls for all six published configurations
 Chromium 153.0.8010.0
+PASS phone controls · live estimates, focus, board filters, saved checklist, print, history, rename and duplicate
+Chromium 153.0.8010.0
+PASS malformed draft import and startup recovery, preserved pending game, and cleared Issue after navigation
+Chromium 153.0.8010.0

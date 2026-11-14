@@ -1,6 +1,6 @@
-# Audit handoff · All Bridges Burning Solo Companion v0.10.2
+# Audit handoff · All Bridges Burning Solo Companion v0.10.4
 
-Build with `node build.mjs`, verify `sha256sum -c SHA256SUMS`, and run `node --test test/*.test.mjs`. The checksum corresponds to the checked-in `All_Bridges_Burning_Solo.html`. [Rules and sources](docs/Rules_and_Sources.md) lists the rule mappings and source fingerprints.
+Build with `node build.mjs`, verify `sha256sum -c SHA256SUMS`, and run `npm test`. The checksum corresponds to the checked-in `All_Bridges_Burning_Solo.html`. [Rules and sources](docs/Rules_and_Sources.md) lists the rule mappings and source fingerprints.
 
 Claude's [v0.10.1 report](docs/Claude_Audit_v0.10.1.md) preserves the independent findings and that release's checksum. The original v0.10.0 handoff is in the repository history at `57a99a0`.
 
@@ -47,12 +47,14 @@ The photos supplied both sides of the boxed aid. Source fingerprints and rule de
 
 The prior Event, Capability allocation and Senate Command decisions are recorded in [Rules and sources](docs/Rules_and_Sources.md). The reference saves and browser suite can be reused on this release.
 
+## v0.10.2 audit follow-up
+
+The v0.10.4 integration passes all twelve cases from the [Astra audit](docs/Astra_Audit_v0.10.2.md) and retains the earlier rules and save checks. See the [validation report](docs/Validation.md) for the results from the combined build.
+
 ## Open playtest checks
 
 1. Compare Train slots, rail-border geometry and complex group splits with the physical board and §§3.2.4–5. Use tabletop entry for choices tied to a printed rail slot.
 2. Check particular News carriers in crowded spaces during movement, handover and Capture. The app tracks News by holder faction and space.
 3. Check Android Downloads and play through the first Propaganda Round on a physical board. Browser verification used Linux Chromium with phone and desktop viewports.
 
-## Optional usability ideas
-
-During a physical playtest, compare the existing checklist with a printable version or compact adjacency view if space lookup slows down play.
+During a physical playtest, try the printable checklist and Nearby Board filter. Check whether they reduce the time spent matching the physical board.

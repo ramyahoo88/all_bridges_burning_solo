@@ -1,11 +1,11 @@
-# Automation coverage · v0.10.2
+# Automation coverage · v0.10.4
 
 | Procedure | Coverage | At the table |
 |---|---|---|
 | Full campaign setup | Automatic setup, physical verification | Copy the pieces, markers, boxes, and starting eligibility. Choose a physical deck or a seeded app deck. |
 | Event deck, priority, and eligibility | Automatic with physical input option | In physical mode enter each revealed card ID. Move the cylinders and cards to match the action record. |
 | Bot mini-decks and Special Activities | Automatic with an optional tabletop mode for Commands | Review the card draw, conditions, priorities, and targets. For a map situation that depends on a particular Train slot, use **Tabletop resolution option**, follow the named bot card, and keep any shown condition roll. |
-| Human Commands and Special Activities | Guided in the app or at the table | Enter the spaces, choices, payments, and Special Activity timing. For complex actions, choose **Resolve with the physical faction aid**, then enter the outcome. |
+| Human Commands and Special Activities | Guided in the app or at the table | Enter spaces, pieces and Special Activity timing. The form estimates costs and shows candidate spaces. Preview checks the full action. For complex actions, select **Resolve with the physical faction aid**, then enter the outcome. |
 | March and Attack | Guided human actions, automated bot actions on space-level geometry | Choose origins, destinations, pieces, and moving Capabilities. In a Train Attack, select any Cells or Russian Troops already at the target that will join. Use the physical aid for a Train's precise rail slot, complex splits, or particular participating Capabilities the form cannot express. |
 | Moderates Message and News | Automatic bot Message, guided human Message and saved follow-up | Enter a path and any carrier choice. Use the physical aid for a particular carrier in a stack, capture ties, or moves the form cannot express. Human News use remains optional and paid. |
 | Bot Events | Automatic for boxed priorities, with prompted human choices and a guided fallback | Review the Event side and resolution. For #7, #28, or #34, make the human choice at the prompt and copy each applied step. Other sides reached through general Event priorities can open a tabletop form. |

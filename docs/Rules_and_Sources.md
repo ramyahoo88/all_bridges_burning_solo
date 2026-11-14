@@ -34,7 +34,7 @@ The authoritative files are referenced by URL. The release bundles no card art, 
 
 ## Interpretations and open questions
 
-| Point | Interpretation in v0.10.2 |
+| Point | Interpretation |
 |---|---|
 | Full Command without a Special Activity | It uses the Command box and becomes Ineligible. Both the printed map and the Playbook’s instruction to record the full Command support this reading. A one-space bot Command with no Special Activity uses the Limited box when available. |
 | #50 and #56 Activism | The replacement cards and §7.2 use the sum of Vassalage and Polarization. #56 reuses its Phase I condition roll. In Phase II the Town Population condition has no die, so the app applies #50's activation check after the condition passes. Full #56 first chooses enemy flips or, if there are none and the last Campaign allows it, removes existing Active Cells before applying a successful activation. Limited #56 uses one option. #50 counts same-space calming and Agitation as two options for eligibility. |

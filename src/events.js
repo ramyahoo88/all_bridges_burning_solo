@@ -125,12 +125,23 @@ export function autoEvent(g,f,id,side,log,choice={}) {
   if(c) {
     const owner=c.owner==='m'?choice.beneficiary:c.owner;
     if(!['s','r'].includes(owner)) return null;
-    if(!capAvailable(g,c.cap)) return false;
-    if(g.phase===2&&human(g,owner)&&!choice.destination&&capDestinations(g,owner,c.cap).length>1) return null;
-    if(g.phase===1) g.held[owner].push(c.cap);
-    else if(!placeCapability(g,log,owner,c.cap,choice)) return false;
-    if(id===10) g.tracks.sV=clamp(g.tracks.sV+1,0,6);
-    return true;
+    const canPlace=capAvailable(g,c.cap)>0&&(g.phase===1||capDestinations(g,owner,c.cap).length>0);
+    if(canPlace&&g.phase===2&&human(g,owner)&&!choice.destination&&capDestinations(g,owner,c.cap).length>1) return null;
+    let placed=false;
+    if(canPlace) {
+      if(g.phase===1) {
+        g.held[owner].push(c.cap);
+        placed=true;
+      } else placed=placeCapability(g,log,owner,c.cap,choice);
+    }
+    let shifted=false;
+    if(id===10) {
+      const was=g.tracks.sV;
+      g.tracks.sV=clamp(was+1,0,6);
+      shifted=g.tracks.sV!==was;
+      if(shifted) log.push('#10 · German Vassalage '+was+' → '+g.tracks.sV+'.');
+    }
+    return placed||shifted;
   }
   if(id===3&&side==='light'||id===11&&side==='light'||id===45&&side==='light') {
     const power=id===3?'r':choice.power??(f==='s'?'s':'r');

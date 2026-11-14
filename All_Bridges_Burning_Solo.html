@@ -101,8 +101,13 @@ footer { display: flex; justify-content: space-between; gap: 1rem; padding: .6re
 .score { display: grid; gap: .13rem; padding: .55rem .5rem; border: 1px solid #e3e9e6; border-radius: 8px; background: #f6f8f7; min-width: 0; }
 .score strong { font-size: 1.2rem; line-height: 1.15; }
 .score span { color: var(--muted); font-size: .73rem; line-height: 1.2; }
+.score .threshold-note { color: var(--muted); font-size: .68rem; line-height: 1.18; }
 .score.r strong { color: var(--reds); }
 .score.m strong { color: var(--moderates); }
+.form-summary { padding: .52rem .68rem; margin: .5rem 0; border-radius: 9px; border: 1px solid #d5e2df; background: #f4f8f7; font-size: .84rem; }
+.form-summary p { margin: .2rem 0 0; font-size: .8rem; }
+.summary-line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .35rem .8rem; }
+.row-hint { grid-column: 1/-1; margin: .15rem 0 0; font-size: .8rem; }
 .fields, .counter-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%, 155px),1fr)); gap: .58rem .72rem; margin: .55rem 0 .7rem; align-items: end; }
 .fields > .checks { grid-column: 1/-1; }
 .counter-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%, 118px),1fr)); }
@@ -111,7 +116,12 @@ footer { display: flex; justify-content: space-between; gap: 1rem; padding: .6re
 .field input, .field select { width: 100%; min-height: 44px; padding: .43rem .53rem; border: 1px solid #c8d4d3; border-radius: 8px; color: var(--ink); background: white; }
 .field select { text-overflow: ellipsis; }
 .check { display: inline-flex; gap: .45rem; align-items: center; min-height: 40px; color: #30464f; font-size: .9rem; }
-.check input { width: 1.06rem; height: 1.06rem; margin: 0; flex: none; accent-color: var(--primary); }
+.check input, .check-inline input { width: 1.06rem; height: 1.06rem; margin: 0; flex: none; accent-color: var(--primary); }
+.check-inline { display: inline-flex; gap: .4rem; align-items: center; cursor: pointer; min-width: 0; }
+.space-check h4 { margin: 0; }
+.checklist-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .4rem; margin-bottom: .45rem; }
+.checklist-bar .controls { margin: 0; }
+.checked-row { opacity: .68; }
 .checks { padding: .25rem .65rem .38rem; border: 1px solid var(--line); border-radius: 9px; min-width: 0; margin: .55rem 0; }
 .checks legend { padding: 0 .3rem; color: #405560; font-size: .8rem; font-weight: 650; }
 .check-grid { display: flex; flex-wrap: wrap; gap: 0 .8rem; }
@@ -138,6 +148,7 @@ details[open] > summary { margin-bottom: .32rem; }
 .receipt summary { font-family: Georgia, serif; font-size: 1rem; }
 .board-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr)); gap: .62rem; }
 .space-card { border: 1px solid #dde7e3; border-radius: 10px; padding: .63rem .72rem; background: #f8faf9; }
+.space-card.changed-space { border-color: #9cb8be; background: #f3f8f8; }
 .space-card h3, .space-card .quiet { margin: 0; }
 .space-mood { display: flex; flex-wrap: wrap; gap: .3rem .5rem; align-items: center; color: var(--muted); font-size: .8rem; margin: .52rem 0 .38rem; }
 .flag { padding: .12rem .38rem; background: #e9eeec; border-radius: 5px; color: #43524f; }
@@ -154,12 +165,22 @@ details[open] > summary { margin-bottom: .32rem; }
 .campaign-row { display: flex; gap: .7rem; justify-content: space-between; align-items: center; border: 1px solid #dfe7e3; border-radius: 9px; padding: .55rem .68rem; }
 .campaign-row .controls, .campaign-row p { margin: 0; }
 .campaign-row strong { overflow-wrap: anywhere; }
+.rename-box { margin-top: .45rem; }
 .checkpoint { margin-top: .4rem; }
 .coverage { display: grid; gap: .4rem; margin: .55rem 0 1rem; }
 .coverage > div { display: grid; grid-template-columns: minmax(125px,1fr) minmax(90px,.8fr) minmax(155px,2fr); align-items: baseline; gap: .5rem; padding: .35rem .5rem; border-bottom: 1px solid var(--line); }
 .coverage p { margin: 0; }
 .coverage span { font-size: .86rem; color: var(--primary); }
 .result > strong { font-family: Georgia, serif; font-size: 1.45rem; }
+@media print {
+  body { background: #fff; color: #000; }
+  .mast, .turn-side, #action-card, .no-print, footer, .button { display: none !important; }
+  .print-receipt > :not(.turn-layout), .print-receipt .turn-main > :not(.receipt) { display: none !important; }
+  .print-receipt .receipt details.why, .print-receipt .receipt details.full-space { display: none !important; }
+  .turn-layout { display: block; }
+  .card { box-shadow: none; border-color: #999; }
+  .print-receipt .diff-space, .print-receipt .change { break-inside: avoid; }
+}
 @media (max-width: 740px) {
   .turn-layout { display: block; }
   .turn-side { display: grid; gap: .6rem; grid-template-columns: 1fr; }
@@ -198,9 +219,26 @@ const modules={
 "actions.js": function(require) {
 const { FACTIONS, NEAR, RAIL, edge, spaceName}=require("data.js");
 const {addNews, capacity, cells, clamp, cleanSpace, clone, countTerror, flip, human, newsAt, pay, pools}=require("model.js");
-const {pick, roll}=require("random.js");
+const {chooseSpaceRanked, pick, roll}=require("random.js");
 
 const enemy = f=>FACTIONS.filter(other=>other!==f);
+function createMoveState() {
+  return {fromUsed:new Set(),toUsed:new Set(),movedInto:{}};
+}
+const unmovedCount = (b,movedInto,id,key)=>Math.max(0,b[key]-(movedInto[id]?.[key]??0));
+const unmovedCells = (b,movedInto,id,f='m')=>unmovedCount(b,movedInto,id,f+'A')+unmovedCount(b,movedInto,id,f+'I');
+function recordMovedInto(movedInto,id,key,count=1) {
+  if(count<=0) return;
+  const arrivals=movedInto[id]??={};
+  arrivals[key]=(arrivals[key]??0)+count;
+}
+function recordGroupMove(tracker,from,to,{allowSharedDest=false}={}) {
+  if(tracker.fromUsed.has(from)||tracker.toUsed.has(from)||(!allowSharedDest&&(tracker.fromUsed.has(to)||tracker.toUsed.has(to)))) {
+    throw Error('Enter each movement group once and use each destination once. Record mixed or converging groups in the tabletop editor.');
+  }
+  tracker.fromUsed.add(from);
+  tracker.toUsed.add(to);
+}
 function rallySize(b,f,offset=false) {
   const bonus=f==='r'?-b.support:f==='s'?b.support:0;
   const modifier=f==='m'?Math.abs(b.support):Math.max(0,-bonus)+b[f==='r'?'sTerror':'rTerror'];
@@ -299,14 +337,16 @@ function carryNews(g,f,from,to) {
   const remaining=cells(g.board[from],f);
   for(const token of newsAt(g,from,f).slice(remaining)) token.space=to;
 }
-function travel(g,f,from,to,opts) {
+function travel(g,f,from,to,opts,tracker=null) {
   const b=g.board[from], d=g.board[to], count=opts.count;
   if(!NEAR[from]?.includes(to)||!Number.isInteger(count)||count<1||count>cells(b,f)) throw Error('Select an adjacent destination and an available group.');
+  if(tracker) recordGroupMove(tracker,from,to,{allowSharedDest:Boolean(opts.allowSharedDest)});
   const inactive=opts.activeFirst?Math.max(0,count-b[f+'A']):Math.min(count,b[f+'I']);
+  const active=count-inactive;
   b[f+'I']-=inactive;
   d[f+'I']+=inactive;
-  b[f+'A']-=count-inactive;
-  d[f+'A']+=count-inactive;
+  b[f+'A']-=active;
+  d[f+'A']+=active;
   const russian=f==='r'?Math.min(opts.russian??0,b.u,count):0;
   b.u-=russian;
   d.u+=russian;
@@ -319,6 +359,40 @@ function travel(g,f,from,to,opts) {
   }
   carryNews(g,f,from,to);
   cleanSpace(g,from);
+}
+function resolveMessageMove(g,log,step,movedInto={}) {
+  const {from,path,wasActive,token=null,carryPerson=false,captureSpace=null,bot=false}=step;
+  const source=g.board[from];
+  source[wasActive?'mA':'mI']--;
+  let to=path.at(-1), captured=false;
+  if(token||carryPerson) {
+    const start=token?path.indexOf(token.space):0;
+    const options=path.slice(1).map((id,index)=>({id,index,dist:Math.abs(index+1-start),threat:Math.max(g.board[id].rA,g.board[id].sA)}));
+    let target;
+    if(bot) {
+      target=chooseSpaceRanked(g,options,x=>[-x.threat,x.dist],null,x=>spaceName(x.id),x=>x.id);
+    } else {
+      const sorted=[...options].sort((a,b)=>b.threat-a.threat||a.dist-b.dist);
+      target=sorted.find(x=>x.id===captureSpace&&x.threat===sorted[0].threat&&x.dist===sorted[0].dist)??sorted[0];
+    }
+    if(target?.threat&&roll(g,log,'Message Capture in '+spaceName(target.id))<=target.threat) {
+      to=target.id;
+      captured=true;
+    }
+    if(token) {
+      token.space=to;
+      token.owner='m';
+    }
+    if(carryPerson) {
+      source.person=false;
+      g.board[to].person=true;
+    }
+  }
+  const status=captured?'mA':'mI';
+  g.board[to][status]++;
+  recordMovedInto(movedInto,to,status,1);
+  cleanSpace(g,from);
+  return {to,captured,status};
 }
 function capStrength(caps) {
   const officer=caps.includes('officer-s');
@@ -391,7 +465,7 @@ function engage(g,log,{f,id,defenders,attackCount,russians=0,caps=null,boost=0,r
     attackerLoss(Math.min(troopsLost,attackCount));
     if(f==='r') b.u-=Math.min(b.u,russians,Math.max(0,troopsLost-attackCount));
     attackerLoss(Math.min(Math.floor(casualties/3),attackA+attackI));
-  } else b.g=Math.max(0,b.g-Math.floor(casualties/3));
+  }
   if(prison) {
     const side=f==='g'?'s':f;
     if(countTerror(b)<2&&pools(g)[side+'Terror']>0) b[side+'Terror']++;
@@ -401,7 +475,7 @@ function engage(g,log,{f,id,defenders,attackCount,russians=0,caps=null,boost=0,r
   cleanSpace(g,id);
 }
 
-return {enemy,rallySize,placeCells,removeCells,replaceWithDisc,rallyPlace,terrorOptions,terrorAt,cubeColor,putCube,legalRail,travel,battleStrength,engage};
+return {enemy,createMoveState,unmovedCount,unmovedCells,recordMovedInto,recordGroupMove,rallySize,placeCells,removeCells,replaceWithDisc,rallyPlace,terrorOptions,terrorAt,cubeColor,putCube,legalRail,travel,resolveMessageMove,battleStrength,engage};
 },
 "bot-events.js": function(require) {
 const {BORDERS, NAME, NEAR, SPACE_IDS, TOWNS, distance, pop, spaceName, town}=require("data.js");
@@ -882,7 +956,7 @@ return {passForEvent,shouldBlockEvent,eventChoiceSpaces,finishEventChoice,hennal
 "bot-operations.js": function(require) {
 const {NAME, NEAR, SPACE_IDS, TOWNS, distance, pop, spaceName, town}=require("data.js");
 const {capacity, cells, cleanSpace, control, countActive, flip, forces, human, newsAt, personality, pools, score}=require("model.js");
-const {engage, legalRail, terrorAt, terrorOptions, travel}=require("actions.js");
+const {createMoveState, engage, legalRail, resolveMessageMove, terrorAt, terrorOptions, travel, unmovedCells, unmovedCount}=require("actions.js");
 const {chooseRanked, chooseSpaceRanked, pick, roll}=require("random.js");
 const {nearest, placeRanked}=require("bot-rally.js");
 
@@ -1081,47 +1155,32 @@ function paths(origin,max=3) {
 const MESSAGE_PATHS=Object.fromEntries(SPACE_IDS.map(id=>[id,paths(id)]));
 function botMessage(g,number,limit,log) {
   let used=0;
-  const movedInto={};
+  const {movedInto}=createMoveState();
   const phase2=number===63;
   const home=personality(g);
   const eligibleOrigin=id=>{
     const b=g.board[id], n=cells(b,'m');
     const protect=b.person?3:b.network?2:n===3&&pools(g).network&&capacity(b)>0?3:0;
-    return n>protect&&n>(movedInto[id]??0);
+    return n>protect&&unmovedCells(b,movedInto,id,'m')>0;
   };
   const placeRank=(list,rank,label)=>chooseSpaceRanked(g,list,rank,log,label,x=>spaceName(x.from)+' → '+spaceName(x.to),x=>x.to);
   const eligibleRoutes=()=>SPACE_IDS.filter(eligibleOrigin).flatMap(from=>{
-    const b=g.board[from];
+    const b=g.board[from], hasActive=unmovedCount(b,movedInto,from,'mA')>0, leavingKey=hasActive?'mA':'mI';
     return MESSAGE_PATHS[from].map(path=>{
       const to=path.at(-1);
       const d=g.board[to];
-      return {from,to,path,lone:Number(cells(b,'m')===1&&!b.network&&!b.person),active:Number(b.mA>0),
-        drop:control(b)?false:Boolean(control({...b,[b.mA?'mA':'mI']:b[b.mA?'mA':'mI']-1})),
+      return {from,to,path,lone:Number(cells(b,'m')===1&&!b.network&&!b.person),active:Number(hasActive),
+        drop:control(b)?false:Boolean(control({...b,[leavingKey]:b[leavingKey]-1})),
         clears:Boolean(control(d)&&!control({...d,mI:d.mI+1}))};
     }).filter(x=>x.from!==x.to||x.active);
   });
   function perform(route,newsId=null) {
     const b=g.board[route.from];
-    const wasActive=b.mA>0;
-    b[wasActive?'mA':'mI']--;
-    const attached=newsId??(cells(b,'m')===0?newsAt(g,route.from,'m')[0]?.id:null);
-    const n=g.news.find(token=>token.id===attached);
-    let to=route.to, captured=false;
-    if(n) {
-      const start=route.path.indexOf(n.space);
-      const options=route.path.slice(1).map((id,index)=>({id,index,threat:Math.max(g.board[id].rA,g.board[id].sA)}));
-      const target=chooseSpaceRanked(g,options,x=>[-x.threat,Math.abs(x.index+1-start)],null,x=>spaceName(x.id),x=>x.id);
-      if(target?.threat&&roll(g,log,'Message Capture in '+spaceName(target.id))<=target.threat) {
-        to=target.id;
-        captured=true;
-      }
-      n.space=to;
-      n.owner='m';
-    }
-    g.board[to][captured?'mA':'mI']++;
-    movedInto[to]=(movedInto[to]??0)+1;
+    const wasActive=unmovedCount(b,movedInto,route.from,'mA')>0;
+    const attached=newsId??(cells(b,'m')===1?newsAt(g,route.from,'m')[0]?.id:null);
+    const token=g.news.find(item=>item.id===attached)??null;
+    const {to}=resolveMessageMove(g,log,{from:route.from,path:route.path,wasActive,token,bot:true},movedInto);
     used++;
-    cleanSpace(g,route.from);
     if(to!==route.to) log.push('Capture stops the Cell in '+spaceName(to)+'.');
   }
   const move=(label,filter,rank=()=>[],newsId=null)=>{
@@ -1162,27 +1221,52 @@ const moveCaps=(g,f,from,to)=>{
   const list=g.board[from].caps[f];
   return list.filter(cap=>cap!=='train'||legalRail(g,from,to)).sort((a,b)=>['train','officer','cannon'].indexOf(a)-['train','officer','cannon'].indexOf(b)).slice(0,2);
 };
-function marchCandidates(g,f,from,targets,senatePop) {
-  const b=g.board[from];
-  const count=cells(b,f);
-  if(f==='r'&&(town(from)||b.admin||!(b.g>=2||b.support>0&&!b.rA))||count<(f==='r'?2:4)) return [];
-  return NEAR[from].flatMap(to=>{
-    const c=group(g,f,from,to,f==='r'?count-1:Math.min(5,count-1),moveCaps(g,f,from,to));
-    if(f==='r') {
-      if(pop(from)&&control(b)==='r'&&control(c.origin)!=='r') return [];
-      const gain=pop(to)&&control(g.board[to])!=='r'&&control(c.dest)==='r';
-      const breaks=senatePop>=4&&town(to)&&control(g.board[to])==='s'&&control(c.dest)!=='s';
-      if(!gain&&!breaks) return [];
-      c.rank=[gain?0:1,-pop(to),gain?-g.board[to].support:0,b.g>=2?0:1];
+const keepsOriginControl=(from,b,origin,f)=>f==='r'?(!pop(from)||control(b)!=='r'||control(origin)==='r'):
+  (!town(from)||(control(b)!=='s'||control(origin)==='s')&&(control(b)==='r'||control(origin)!=='r'));
+function legalGroupSizes(g,f,from,{moving=true,mode='march'}={}) {
+  const b=g.board[from], total=cells(b,f);
+  if(!moving) return (f==='s'?total>=3:total>=3||total>=1&&b.caps.r.length>0)?[total]:[];
+  const max=total-1;
+  if(max<1) return [];
+  const proposed=f==='s'?[5,4,3].filter(n=>n<=max):mode==='attack'?(max>=3?[3]:[]):[max];
+  return proposed.filter(n=>{
+    const inactive=Math.min(b[f+'I'],n), active=n-inactive;
+    return keepsOriginControl(from,b,{...b,[f+'I']:b[f+'I']-inactive,[f+'A']:b[f+'A']-active},f);
+  });
+}
+function legalMarchGroup(g,f,from) {
+  const b=g.board[from], total=cells(b,f);
+  if(f==='r'&&(town(from)||b.admin||!(b.g>=2||b.support>0&&!b.rA))) return null;
+  const sizes=legalGroupSizes(g,f,from,{moving:true,mode:'march'});
+  if(!sizes.length) return null;
+  const count=sizes[0];
+  return {from,sizes,rank:f==='r'?[b.g>=2?0:1]:[-Number(b.caps.s.length>0),-count,-total]};
+}
+function legalMarchDestinations(g,f,grp,{targets,senatePop,tracker,limit=99}) {
+  const {from,sizes}=grp;
+  return NEAR[from].filter(to=>tracker.toUsed.size<limit||tracker.toUsed.has(to)).flatMap(to=>{
+    for(const size of sizes) {
+      const c=group(g,f,from,to,size,moveCaps(g,f,from,to));
+      if(f==='r') {
+        const gain=pop(to)&&control(g.board[to])!=='r'&&control(c.dest)==='r';
+        const breaks=senatePop>=4&&town(to)&&control(g.board[to])==='s'&&control(c.dest)!=='s';
+        if(!gain&&!breaks) continue;
+        c.rank=[gain?0:1,-pop(to),gain?-g.board[to].support:0,...grp.rank];
+        return [c];
+      }
+      const claim=town(to)&&control(g.board[to])!=='s'&&control(c.dest)==='s';
+      const toward=targets.filter(id=>distance(to,id)<distance(from,id));
+      if(!claim&&!toward.length) continue;
+      c.rank=[claim?0:1,claim?-pop(to):-Math.max(...toward.map(pop)),nearest(to,targets)];
       return [c];
     }
-    if(town(from)&&(control(b)==='s'&&control(c.origin)!=='s'||control(b)!=='r'&&control(c.origin)==='r')) return [];
-    const claim=town(to)&&control(g.board[to])!=='s'&&control(c.dest)==='s';
-    const toward=targets.filter(id=>distance(to,id)<distance(from,id));
-    if(!claim&&!toward.length) return [];
-    c.rank=[claim?0:1,-Number(b.caps.s.length>0),-count,claim?-pop(to):-Math.max(...toward.map(pop)),nearest(to,targets)];
-    return [c];
+    return [];
   });
+}
+function selectMarchMove(g,f,groups,log) {
+  const origin=f==='s'?chooseSpaceRanked(g,groups,grp=>grp.rank,log,'#59 · Select March group',grp=>spaceName(grp.from),grp=>grp.from):null;
+  const candidates=f==='s'?origin?.destinations??[]:groups.flatMap(grp=>grp.destinations);
+  return chooseSpaceRanked(g,candidates,x=>x.rank,log,'March: apply #'+(f==='r'?53:59)+' movement and destination priorities',x=>spaceName(x.from)+' → '+spaceName(x.to)+' ('+x.count+' Cells)',x=>x.to);
 }
 function eventMarch(g,f,from,to) {
   if(g.phase!==2||!NEAR[from].includes(to)) return null;
@@ -1195,24 +1279,24 @@ function eventMarch(g,f,from,to) {
   return moving>0?group(g,f,from,to,moving,caps):null;
 }
 function botMarch(g,f,limit,log) {
-  const fromUsed=new Set(), toUsed=new Set();
-  while(fromUsed.size<SPACE_IDS.length) {
+  const tracker=createMoveState();
+  while(tracker.fromUsed.size<SPACE_IDS.length) {
     const targets=TOWNS.filter(id=>control(g.board[id])!=='s');
     const senatePop=score(g).senate;
-    const candidates=SPACE_IDS.filter(id=>!fromUsed.has(id)&&!toUsed.has(id)).flatMap(from=>marchCandidates(g,f,from,targets,senatePop))
-      .filter(x=>toUsed.size<limit||toUsed.has(x.to));
-    const move=chooseSpaceRanked(g,candidates,x=>x.rank,log,'March: apply #'+(f==='r'?53:59)+' movement and destination priorities',x=>spaceName(x.from)+' → '+spaceName(x.to)+' ('+x.count+' Cells)',x=>x.to);
+    const groups=SPACE_IDS.filter(id=>!tracker.fromUsed.has(id)&&!tracker.toUsed.has(id))
+      .map(from=>legalMarchGroup(g,f,from)).filter(Boolean)
+      .map(grp=>({...grp,destinations:legalMarchDestinations(g,f,grp,{targets,senatePop,tracker,limit})}))
+      .filter(grp=>grp.destinations.length>0);
+    const move=selectMarchMove(g,f,groups,log);
     if(!move) break;
-    travel(g,f,move.from,move.to,move);
-    fromUsed.add(move.from);
-    toUsed.add(move.to);
+    travel(g,f,move.from,move.to,{...move,allowSharedDest:true},tracker);
     if(limit===1) break;
   }
-  return toUsed.size;
+  return tracker.toUsed.size;
 }
 function attackCandidates(g,f,from) {
   const b=g.board[from], count=cells(b,f);
-  const enemy=f==='r'?'s':'r';
+  const foe=f==='r'?'s':'r';
   const targets=TOWNS.filter(id=>control(g.board[id])!=='s');
   const defenders=id=>{
     const d=g.board[id];
@@ -1225,14 +1309,14 @@ function attackCandidates(g,f,from) {
   return [from,...NEAR[from]].flatMap(to=>{
     const move=from!==to, d=g.board[to], opp=defenders(to);
     if(!opp.length) return [];
-    if(f==='s'&&count<3||f==='r'&&count<3&&!b.caps.r.length) return [];
     if(move&&(!b.caps[f].includes('train')||!legalRail(g,from,to)||count<4)) return [];
-    const c=move?group(g,f,from,to,f==='r'?3:Math.min(5,count-1),moveCaps(g,f,from,to)):
-      {from,to,count,caps:b.caps[f],russian:f==='r'?b.u:0};
-    if(move&&f==='r'&&pop(from)>0&&control(b)==='r'&&control(c.origin)!=='r') return [];
-    if(move&&f==='s'&&town(from)&&(control(b)==='s'&&control(c.origin)!=='s'||control(b)!=='r'&&control(c.origin)==='r')) return [];
-    if(f==='r'&&!d.caps.s.length&&!(town(to)&&cells(d,enemy))&&!(pop(to)>0&&cells(d,enemy))) return [];
-    if(f==='s'&&!(town(to)&&(!move||cells(d,enemy)))&&!(move&&targets.some(id=>distance(to,id)<distance(from,id)))) return [];
+    const sizes=legalGroupSizes(g,f,from,{moving:move,mode:'attack'});
+    if(!sizes.length) return [];
+    const size=sizes[0];
+    const c=move?group(g,f,from,to,size,moveCaps(g,f,from,to)):
+      {from,to,count:size,caps:b.caps[f],russian:f==='r'?b.u:0};
+    if(f==='r'&&!d.caps.s.length&&!(town(to)&&cells(d,foe))&&!(pop(to)>0&&cells(d,foe))) return [];
+    if(f==='s'&&!(town(to)&&(!move||cells(d,foe)))&&!(move&&targets.some(id=>distance(to,id)<distance(from,id)))) return [];
     c.defenders=opp;
     c.rank=f==='r'?[d.caps.s.length?0:town(to)?1:2,-Number(d.caps.s.includes('train')),-Number(c.caps.includes('train')),-pop(to),-Number(b.caps.r.length>0)]:
       [town(to)?0:1,-Number(c.caps.includes('train')),-pop(to),-Number(b.caps.s.length>0),-count];
@@ -1256,7 +1340,7 @@ function botAttack(g,f,limit,log,{boost=0,local=false}={}) {
   return count;
 }
 
-return {orphanAdmin,botCondition,botActivism,botTerror,botNegotiate,botMessage,eventMarch,botMarch,botAttack};
+return {orphanAdmin,botCondition,botActivism,botTerror,botNegotiate,botMessage,legalGroupSizes,legalMarchGroup,legalMarchDestinations,selectMarchMove,eventMarch,botMarch,botAttack};
 },
 "bot-rally.js": function(require) {
 const {BORDERS, NAME, SPACE_IDS, TOWNS, borderName, distance, pop, spaceName, town}=require("data.js");
@@ -1704,7 +1788,7 @@ function botNews(g,log) {
 return {executeBotCard,botDraw,botTurn,botNews};
 },
 "data.js": function(require) {
-const VERSION = '0.10.2';
+const VERSION = '0.10.4';
 const FACTIONS = ['r', 's', 'm'];
 const NAME = {r:'Reds', s:'Senate', m:'Moderates', g:'Germany', u:'Russia'};
 const TYPES = ['cannon','train','officer'];
@@ -2268,12 +2352,23 @@ function autoEvent(g,f,id,side,log,choice={}) {
   if(c) {
     const owner=c.owner==='m'?choice.beneficiary:c.owner;
     if(!['s','r'].includes(owner)) return null;
-    if(!capAvailable(g,c.cap)) return false;
-    if(g.phase===2&&human(g,owner)&&!choice.destination&&capDestinations(g,owner,c.cap).length>1) return null;
-    if(g.phase===1) g.held[owner].push(c.cap);
-    else if(!placeCapability(g,log,owner,c.cap,choice)) return false;
-    if(id===10) g.tracks.sV=clamp(g.tracks.sV+1,0,6);
-    return true;
+    const canPlace=capAvailable(g,c.cap)>0&&(g.phase===1||capDestinations(g,owner,c.cap).length>0);
+    if(canPlace&&g.phase===2&&human(g,owner)&&!choice.destination&&capDestinations(g,owner,c.cap).length>1) return null;
+    let placed=false;
+    if(canPlace) {
+      if(g.phase===1) {
+        g.held[owner].push(c.cap);
+        placed=true;
+      } else placed=placeCapability(g,log,owner,c.cap,choice);
+    }
+    let shifted=false;
+    if(id===10) {
+      const was=g.tracks.sV;
+      g.tracks.sV=clamp(was+1,0,6);
+      shifted=g.tracks.sV!==was;
+      if(shifted) log.push('#10 · German Vassalage '+was+' → '+g.tracks.sV+'.');
+    }
+    return placed||shifted;
   }
   if(id===3&&side==='light'||id===11&&side==='light'||id===45&&side==='light') {
     const power=id===3?'r':choice.power??(f==='s'?'s':'r');
@@ -2380,7 +2475,7 @@ return {eventPrompt,eventSides,eventTag,capAvailable,capDestinations,placeCapabi
 "human.js": function(require) {
 const {BORDERS, COMMANDS, NEAR, SPECIALS, SPACE_IDS, pop, spaceName, town}=require("data.js");
 const { adjustResource, cells, cleanSpace, control, flip, newsAt, personality, pay, pools}=require("model.js");
-const {engage, enemy, legalRail, placeCells, putCube, rallySize, replaceWithDisc, terrorAt, terrorOptions, travel}=require("actions.js");
+const {createMoveState, engage, enemy, legalRail, placeCells, putCube, rallySize, recordGroupMove, recordMovedInto, replaceWithDisc, resolveMessageMove, terrorAt, terrorOptions, travel, unmovedCells, unmovedCount}=require("actions.js");
 const { roll}=require("random.js");
 
 const requireThat=(check,message)=>{if(!check) throw Error(message);};
@@ -2415,7 +2510,15 @@ function recycle(g,f,plans) {
     cleanSpace(g,plan.id);
   }
 }
-function resolveSpecial(g,f,log,spec) {
+function activateModerates(b,id,count,movedInto) {
+  const moved=Math.max(0,count-unmovedCount(b,movedInto,id,'mI'));
+  flip(b,'m',true,count);
+  if(moved) {
+    movedInto[id].mI-=moved;
+    recordMovedInto(movedInto,id,'mA',moved);
+  }
+}
+function resolveSpecial(g,f,log,spec,movedInto) {
   const name=spec.name, id=spec.id, b=g.board[id], t=g.tracks;
   if(name==='Political Event') {
     const ids=list(spec.sites);
@@ -2486,15 +2589,16 @@ function resolveSpecial(g,f,log,spec) {
     requireThat(b?.mI,'Select a space with an Underground Moderates Cell.');
     if(spec.option==='shift') {
       requireThat(b.support!==0,'That space is already Neutral.');
+      activateModerates(b,id,1,movedInto);
       b.support-=Math.sign(b.support);
     } else {
       const side=spec.side;
       requireThat(['r','s'].includes(side)&&b[side+'I']&&pools(g).m&&
         (cells(b,side)>1||!b[side+'Prep']&&!b.caps[side].length&&!newsAt(g,id,side).length),'Select an Inactive enemy Cell that can be replaced without removing a marker or transferring News.');
+      activateModerates(b,id,1,movedInto);
       b[side+'I']--;
       b.mI++;
     }
-    flip(b,'m',true);
     return;
   }
   if(name==='Publish') {
@@ -2504,10 +2608,16 @@ function resolveSpecial(g,f,log,spec) {
       const b=g.board[site];
       requireThat(b&&pop(site)>0&&(cells(b,'m')||b.network),'Publish needs Population and a Moderates piece.');
       const n=integer(spec.amounts?.[site]??0,0,Math.min(b.mI,Number(b.person)+Number(b.network>0)),'Cells to Activate for Publish');
-      flip(b,'m',true,n);
+      activateModerates(b,site,n,movedInto);
       adjustResource(g,f,Number(town(site))+2*n);
     }
   }
+}
+function redsAgitation(g,row) {
+  const space=g.board[row.id];
+  const shift=space.support>-2&&row.shift!==false;
+  const removeTerror=space.rTerror+space.sTerror>0;
+  return {shift,removeTerror,cost:Number(removeTerror)+Number(shift)+g.tracks.sIssue};
 }
 function orderRows(g,cmd,rows,f,limited) {
   requireThat(rows.length>0&&rows.length<=SPACE_IDS.length+Number(cmd==='Activism'),'Choose at least one action and stay within the space limit.');
@@ -2532,24 +2642,15 @@ function applyHumanCommand(g,f,log,intent,{limited=false,free=false}={}) {
     !(rows.some(row=>row.option==='calm')&&rows.some(row=>row.option==='flip')),
     'Use at most one activation roll or Reds Agitation. Choose either calming friendly Cells or flipping enemy Cells.');
   if(cmd==='Activism'&&rows.some(row=>['activate','agitate'].includes(row.option))&&!['activate','agitate'].includes(rows.at(-1).option)) throw Error('Resolve Activism’s activation roll or Reds Agitation after its other selections.');
-  if(['March','Attack'].includes(cmd)) {
-    const seen=new Set();
-    for(const row of rows) {
-      const from=row.from??row.to;
-      requireThat(!seen.has(from)&&!seen.has(row.to),'Enter each movement group once and use each destination once. Record mixed or converging groups in the tabletop editor.');
-      seen.add(from);
-      seen.add(row.to);
-    }
-  }
+  const moveTracker=createMoveState();
   let discount=cmd==='Rally'&&f==='m'?Math.max(0,g.tracks.pol-5):0, addedTerror=0;
   let i=0;
   const fixedPol=g.tracks.pol;
-  const movedInto={};
   const activismSites=new Set();
   let negotiated=0;
   const timing=spec.name?integer(spec.timing??rows.length,0,rows.length,'Special Activity timing'):-1;
   for(const row of rows) {
-    if(i===timing) resolveSpecial(g,f,log,spec);
+    if(i===timing) resolveSpecial(g,f,log,spec,moveTracker.movedInto);
     i++;
     const b=g.board[row.id];
     if(cmd==='Rally') {
@@ -2579,7 +2680,6 @@ function applyHumanCommand(g,f,log,intent,{limited=false,free=false}={}) {
       flip(b,'m',true);
       flip(b,row.side,false);
       negotiated++;
-
       log.push('Negotiate in '+spaceName(row.id)+'.');
     }
     if(cmd==='Terror') {
@@ -2597,15 +2697,20 @@ function applyHumanCommand(g,f,log,intent,{limited=false,free=false}={}) {
     }
     if(cmd==='Activism') {
       if(row.option==='activate') {
+        const eligible=SPACE_IDS.filter(id=>g.board[id][f+'I']>0);
+        const choices=row.sites===undefined?eligible:list(row.sites);
+        requireThat(choices.length>0&&new Set(choices).size===choices.length&&choices.every(id=>eligible.includes(id)),'Choose spaces with Inactive friendly Cells.');
         pay(g,f,1,free);
         const value=roll(g,log,'Activism');
-        const choices=list(row.sites);
-        requireThat(new Set(choices).size===choices.length&&choices.every(id=>g.board[id]?.[f+'I']),'Choose spaces with Inactive friendly Cells.');
+        const requested=integer(row.activateCount??0,0,6,'maximum Cells to Activate')||value;
+        const max=Math.min(value,requested);
+        // A subset can take one Cell per space. A second pass requires every eligible space.
+        const limit=choices.length<eligible.length?Math.min(max,choices.length):max;
         let n=0, progress=true;
-        while(n<value&&progress) {
+        while(n<limit&&progress) {
           progress=false;
           for(const id of choices) {
-            if(n===value) break;
+            if(n===limit) break;
             if(flip(g.board[id],f,true)) {
               n++;
               progress=true;
@@ -2625,10 +2730,9 @@ function applyHumanCommand(g,f,log,intent,{limited=false,free=false}={}) {
           cleanSpace(g,row.id);
         } else if(agitate) {
           requireThat(f==='r'&&b.admin&&control(b)==='r','Agitate in Reds Control with an Administration.');
-          const shift=b.support>-2&&row.shift!==false;
-          const removeTerror=b.rTerror+b.sTerror>0;
+          const {shift,removeTerror,cost}=redsAgitation(g,row);
           requireThat(shift||removeTerror,'Agitation must remove Terror or shift Opposition.');
-          pay(g,f,Number(removeTerror)+Number(shift)+g.tracks.sIssue);
+          pay(g,f,cost);
           b.rTerror=b.sTerror=0;
           if(shift) b.support--;
         } else {
@@ -2645,22 +2749,22 @@ function applyHumanCommand(g,f,log,intent,{limited=false,free=false}={}) {
       const count=integer(row.count,1,cells(g.board[row.from]??{},f),'marching Cells');
       pay(g,f,Math.ceil(count/3),free);
       const russian=integer(row.russian??0,0,f==='r'?Math.min(count,g.board[row.from].u):0,'moving Russian Troops');
-      travel(g,f,row.from,row.to,{count,activeFirst:row.activeFirst,caps:list(row.caps),russian});
+      travel(g,f,row.from,row.to,{count,activeFirst:row.activeFirst,caps:list(row.caps),russian},moveTracker);
       log.push('March '+count+' from '+spaceName(row.from)+' to '+spaceName(row.to)+'.');
     }
-    if(cmd==='Attack') humanAttack(g,f,log,row,free);
+    if(cmd==='Attack') humanAttack(g,f,log,row,free,moveTracker);
     if(cmd==='Message') {
       pay(g,f,1,free);
-      humanMessage(g,log,row,movedInto);
+      humanMessage(g,log,row,moveTracker.movedInto);
     }
   }
   if(cmd==='Terror') g.tracks.pol=Math.min(10,g.tracks.pol+addedTerror);
   if(cmd==='Negotiate'&&intent.reduce!==false) g.tracks.pol=Math.max(0,g.tracks.pol-negotiated);
-  if(i===timing) resolveSpecial(g,f,log,spec);
+  if(i===timing) resolveSpecial(g,f,log,spec,moveTracker.movedInto);
   if(negotiated) log.push(negotiated+' enemy Cell(s) Deactivated.');
   if(spec.name) log.push('Special Activity · '+spec.name+' after '+timing+' Command row(s).');
 }
-function humanAttack(g,f,log,row,free) {
+function humanAttack(g,f,log,row,free,moveTracker) {
   const {from,to}=row;
   const source=g.board[from], b=g.board[to];
   requireThat(source&&b,'Choose Attack origin and target.');
@@ -2680,9 +2784,12 @@ function humanAttack(g,f,log,row,free) {
     attackCount+=localCount;
     inactive+=row.localActiveFirst?Math.max(0,localCount-b[f+'A']):Math.min(localCount,b[f+'I']);
     russians+=integer(row.localRussian??0,0,f==='r'?b.u:0,'attacking Russian Troops already at the target');
-    travel(g,f,from,to,{count,caps,russian,activeFirst:row.activeFirst});
-  } else for(const cap of new Set(caps)) {
-    requireThat(source.caps[f].filter(x=>x===cap).length>=caps.filter(x=>x===cap).length,'That Attack Capability is unavailable.');
+    travel(g,f,from,to,{count,caps,russian,activeFirst:row.activeFirst},moveTracker);
+  } else {
+    recordGroupMove(moveTracker,from,to);
+    for(const cap of new Set(caps)) {
+      requireThat(source.caps[f].filter(x=>x===cap).length>=caps.filter(x=>x===cap).length,'That Attack Capability is unavailable.');
+    }
   }
   pay(g,f,(from===to?1:Math.ceil(count/3))+boost,free);
   const retreat=row.retreat||null;
@@ -2693,9 +2800,10 @@ function humanAttack(g,f,log,row,free) {
 function humanMessage(g,log,row,movedInto) {
   const path=[row.from,...list(row.path).filter(Boolean)], source=g.board[path[0]];
   requireThat(source&&path.length>=2&&path.length<=4&&path.slice(1).every((id,i)=>NEAR[path[i]].includes(id)),'Choose a connected Message path of one to three steps.');
-  requireThat(cells(source,'m')>(movedInto[row.from]??0),'Select a Moderates Cell that has not moved.');
-  const key=row.activeFirst&&source.mA||!source.mI?'mA':'mI';
-  requireThat(source[key]>(movedInto[row.from+key]??0),'That Cell status has no unmoved Cell at the origin.');
+  requireThat(unmovedCells(source,movedInto,row.from,'m')>0,'Select a Moderates Cell that has not moved.');
+  const unmovedA=unmovedCount(source,movedInto,row.from,'mA'), unmovedI=unmovedCount(source,movedInto,row.from,'mI');
+  const key=row.activeFirst&&unmovedA>0||!unmovedI?'mA':'mI';
+  requireThat(unmovedCount(source,movedInto,row.from,key)>0,'That Cell status has no unmoved Cell at the origin.');
   const carryPerson=Boolean(row.person||source.person&&cells(source,'m')===1);
   const named=row.token?g.news.find(n=>n.id===Number(row.token)):null;
   const token=named??(cells(source,'m')===1&&!carryPerson?newsAt(g,row.from,'m')[0]:null);
@@ -2703,34 +2811,11 @@ function humanMessage(g,log,row,movedInto) {
   requireThat(!carryPerson||source.person,'The Personality is not at the origin.');
   requireThat(!(carryPerson&&token),'A Cell can carry the Personality or one News marker.');
   requireThat(!token||path.includes(token.space)&&(token.owner===null||token.owner==='m'&&token.space===row.from),'The News marker must be on the route, with no other holder.');
-  source[key]--;
-  let to=path.at(-1), captured=false;
-  if(token||carryPerson) {
-    const pickUp=token?path.indexOf(token.space):0;
-    const choices=path.slice(1).map((id,i)=>({id,dist:Math.abs(i+1-pickUp),threat:Math.max(g.board[id].rA,g.board[id].sA)})).sort((a,b)=>b.threat-a.threat||a.dist-b.dist);
-    const target=choices.find(x=>x.id===row.capture&&x.threat===choices[0].threat&&x.dist===choices[0].dist)??choices[0];
-    if(target.threat&&roll(g,log,'Message Capture in '+spaceName(target.id))<=target.threat) {
-      to=target.id;
-      captured=true;
-    }
-    if(token) {
-      token.space=to;
-      token.owner='m';
-    }
-    if(carryPerson) {
-      source.person=false;
-      g.board[to].person=true;
-    }
-  }
-  const status=captured?'mA':'mI';
-  g.board[to][status]++;
-  movedInto[to]=(movedInto[to]??0)+1;
-  movedInto[to+status]=(movedInto[to+status]??0)+1;
-  cleanSpace(g,row.from);
+  const {to,captured}=resolveMessageMove(g,log,{from:row.from,path,wasActive:key==='mA',token,carryPerson,captureSpace:row.capture,bot:false},movedInto);
   log.push('Message · '+spaceName(row.from)+' → '+spaceName(to)+(captured?' · Captured and Active.':'.'));
 }
 
-return {legalCommands,legalSpecials,recycle,applyHumanCommand};
+return {legalCommands,legalSpecials,recycle,redsAgitation,applyHumanCommand};
 },
 "model.js": function(require) {
 const {BORDERS, CAP_NAME, CAP_STOCK, EVENTS, FACTIONS, LABEL, MARK, MOOD, NAME, PROPAGANDA, SALT, SPACES, SPACE_IDS, TYPES, borderName, pop, spaceName, town}=require("data.js");
@@ -3081,7 +3166,7 @@ const {cubeColor, engage, putCube, rallyPlace, replaceWithDisc}=require("actions
 const {chooseSpaceRanked, pick, pickSpace, roll}=require("random.js");
 const {beginRevolt, endGermany, endPropaganda, endRevolt}=require("sequence.js");
 const {capDestinations, placeCapability}=require("events.js");
-const {botRally, placeRanked}=require("bot-rally.js");
+const {botRally, nearest, placeRanked}=require("bot-rally.js");
 
 const AGITATORS=['s','r','m'];
 const setPol=(g,n)=>g.tracks.pol=clamp(n,0,10);
@@ -3407,13 +3492,17 @@ function germanAction(g,log) {
     if(landing) addNews(g,to);
     log.push('German '+(landing?'landing':'reinforcement')+' · '+available+' Troops to '+spaceName(to)+'.');
   } else {
-    const targets=existing.filter(id=>cells(g.board[id],'r')||g.board[id].u);
+    const enemies=SPACE_IDS.filter(id=>cells(g.board[id],'r')||g.board[id].u);
+    const targets=existing.filter(id=>enemies.includes(id));
     if(targets.length) {
       const id=placeRanked(g,targets,()=>[],log,'Germany: Attack Reds or Russians in the same space');
       engage(g,log,{f:'g',id,defenders:['r','u'],attackCount:0});
-    } else {
-      const moves=existing.flatMap(from=>NEAR[from].map(to=>({from,to})));
-      const move=chooseSpaceRanked(g,moves,({to})=>[cells(g.board[to],'r')?0:NEAR[to].some(id=>cells(g.board[id],'r'))?1:2],log,'Germany: March toward Reds Cells',x=>spaceName(x.from)+' → '+spaceName(x.to),x=>x.to);
+    } else if(enemies.length) {
+      const moves=existing.flatMap(from=>{
+        const currentDist=nearest(from,enemies);
+        return NEAR[from].filter(to=>nearest(to,enemies)<currentDist).map(to=>({from,to}));
+      });
+      const move=chooseSpaceRanked(g,moves,()=>[],log,'Germany: March toward Reds or Russians',x=>spaceName(x.from)+' → '+spaceName(x.to),x=>x.to);
       if(move) {
         g.board[move.to].g+=g.board[move.from].g;
         g.board[move.from].g=0;
@@ -3640,20 +3729,48 @@ function endRevolt(g) {
 return {TURN_LABEL,actor,left,opening,options,record,finishTurn,reorder,startCards,advanceCard,revealUpcoming,enterCard,endGermany,endPropaganda,beginRevolt,endRevolt};
 },
 "storage.js": function(require) {
-const {VERSION}=require("data.js");
-const {clone, validateGame}=require("model.js");
+const {BORDERS, COMMANDS, FACTIONS, MARK, SPACE_IDS, SPECIALS, TYPES, VERSION}=require("data.js");
+const {EDIT_TRACKS}=require("editor.js");
+const {clone, human, validateGame}=require("model.js");
+const {actor, options}=require("sequence.js");
 
 const SCHEMA=2;
 const STORAGE_KEY='abb-companion.campaigns';
 const BACKUP_KEY=STORAGE_KEY+'.backup';
 const REJECTED_KEY=STORAGE_KEY+'.rejected';
+const MAX_CAMPAIGNS=250;
 const HISTORY_LIMIT=30;
 const TYPE='all-bridges-burning';
 const id=()=>globalThis.crypto?.randomUUID?.()??('abb-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+const isPlainObject=value=>Boolean(value)&&typeof value==='object'&&!Array.isArray(value);
+const isInt=(value,min,max)=>Number.isInteger(value)&&value>=min&&value<=max;
+const isOptInt=(value,min,max)=>value===undefined||value===''||isInt(value,min,max);
+const isSpaceOrEmpty=value=>value===undefined||value===''||SPACE_IDS.includes(value);
+const timestamp=value=>typeof value==='string'&&value.length<=60&&Number.isFinite(Date.parse(value));
 
 const emptyCollection=()=>({active:null,campaigns:[]});
 const newCampaign=(name,game)=>({id:id(),name,game,draft:{},undo:[],redo:[],checkpoints:[],last:null});
 const activeCampaign=collection=>collection.campaigns.find(c=>c.id===collection.active)??null;
+function addCampaign(collection,campaign) {
+  checkCampaignRoom(collection,1);
+  collection.campaigns.push(campaign);
+  collection.active=campaign.id;
+  return campaign;
+}
+function checkCampaignRoom(collection,additional) {
+  if(collection.campaigns.length+additional>MAX_CAMPAIGNS) throw Error('This workspace can hold up to '+MAX_CAMPAIGNS+' campaigns. Export and remove a campaign to make room.');
+}
+function renameCampaign(entry,name) {
+  const clean=String(name??'').trim().slice(0,100);
+  if(!clean) throw Error('Enter a campaign name.');
+  entry.name=clean;
+  return entry;
+}
+function duplicateCampaign(collection,sourceId) {
+  const source=collection.campaigns.find(c=>c.id===sourceId);
+  if(!source) throw Error('Campaign could not be duplicated.');
+  return addCampaign(collection,{...clone(source),id:id(),name:source.name.slice(0,93)+' (Copy)'});
+}
 function commitCampaign(entry,game,label,detail) {
   entry.undo.push({label,game:entry.game,draft:entry.draft,last:entry.last});
   if(entry.undo.length>HISTORY_LIMIT) entry.undo.shift();
@@ -3668,7 +3785,7 @@ function stepHistory(entry,dir) {
   const previous=from.pop();
   to.push({label:previous.label,game:entry.game,draft:entry.draft,last:entry.last});
   entry.game=previous.game;
-  entry.draft=previous.draft??{};
+  entry.draft=recoverDraft(previous.draft??{},previous.game);
   entry.last=previous.last??null;
   return previous.label;
 }
@@ -3683,7 +3800,7 @@ function encode(collection) {
   return JSON.stringify({type:TYPE,schema:SCHEMA,version:VERSION,...collection});
 }
 function encodeCampaign(entry) {return encode({active:entry.id,campaigns:[entry]});}
-function decode(raw) {
+function decode(raw,{onDraftRecovery}={}) {
   if(typeof raw!=='string'||raw.length>16_000_000) throw Error('Save is missing or too large.');
   const saved=JSON.parse(raw,(key,value)=>{
     if(['__proto__','prototype','constructor'].includes(key)) throw Error('Invalid save field.');
@@ -3691,19 +3808,25 @@ function decode(raw) {
   });
   if(!saved||saved.type!==TYPE||![1,SCHEMA].includes(saved.schema)) throw Error('This is not a supported All Bridges Burning save.');
   const collection=saved.schema===1?migrate(saved):{active:saved.active,campaigns:saved.campaigns};
-  if(!Array.isArray(collection.campaigns)||collection.campaigns.length>250) throw Error('Invalid campaign list.');
+  if(!Array.isArray(collection.campaigns)||collection.campaigns.length>MAX_CAMPAIGNS) throw Error('Invalid campaign list.');
+  for(const key of ['savedAt','exportedAt']) if(timestamp(saved[key])) collection[key]=saved[key];
+  const restore=(draft,game)=>{
+    const recovered=recoverDraft(draft,game);
+    if(recovered!==draft) onDraftRecovery?.();
+    return recovered;
+  };
   const ids=new Set();
   for(const c of collection.campaigns) {
     if(typeof c?.id!=='string'||!/^[a-zA-Z0-9_-]{1,100}$/.test(c.id)||ids.has(c.id)||typeof c.name!=='string'||c.name.length<1||c.name.length>100) throw Error('Invalid campaign identity.');
     ids.add(c.id);
     validateGame(c.game);
-    validateDraft(c.draft);
+    c.draft=restore(c.draft,c.game);
     for(const field of ['undo','redo','checkpoints']) {
       if(!Array.isArray(c[field])||c[field].length>HISTORY_LIMIT) throw Error('Invalid campaign '+field+'.');
       for(const entry of c[field]) {
         if(typeof entry?.label!=='string'||entry.label.length>220) throw Error('Invalid saved history entry.');
         validateGame(entry.game);
-        validateDraft(entry.draft??{});
+        entry.draft=restore(entry.draft??{},entry.game);
         validateReport(entry.last);
       }
     }
@@ -3712,13 +3835,181 @@ function decode(raw) {
   if(collection.active!==null&&!ids.has(collection.active)) throw Error('Active campaign is missing.');
   return collection;
 }
-function validateDraft(draft) {
-  if(!draft||typeof draft!=='object'||Array.isArray(draft)) throw Error('Invalid unfinished form.');
+function validateEdit(edit) {
+  if(!isPlainObject(edit)) throw Error('Invalid board edits.');
+  if(edit.focus!==undefined&&edit.focus!==null&&!isSpaceOrEmpty(edit.focus)) throw Error('Invalid edited space focus.');
+  if(edit.spaces!==undefined) {
+    if(!isPlainObject(edit.spaces)) throw Error('Invalid edited spaces.');
+    for(const [spaceId,sp] of Object.entries(edit.spaces)) {
+      if(!SPACE_IDS.includes(spaceId)||!isPlainObject(sp)) throw Error('Invalid edited space entry.');
+      for(const key of MARK) if(!isOptInt(sp[key],0,key.endsWith('Prep')?1:key.endsWith('Terror')?2:20)) throw Error('Invalid edited piece count.');
+      if(sp.support!==undefined&&!isInt(sp.support,-2,2)) throw Error('Invalid edited Support or Opposition.');
+      if(sp.person!==undefined&&typeof sp.person!=='boolean') throw Error('Invalid edited Personality flag.');
+      if(sp.caps!==undefined) {
+        if(!isPlainObject(sp.caps)) throw Error('Invalid edited space Capabilities.');
+        for(const f of ['r','s']) if(sp.caps[f]!==undefined&&(!Array.isArray(sp.caps[f])||sp.caps[f].length>8||sp.caps[f].some(cap=>!TYPES.includes(cap)))) throw Error('Invalid edited Capability list.');
+      }
+    }
+  }
+  if(edit.tracks!==undefined) {
+    if(!isPlainObject(edit.tracks)) throw Error('Invalid edited tracks.');
+    for(const [key,val] of Object.entries(edit.tracks)) {
+      if(!EDIT_TRACKS.includes(key)) throw Error('Invalid edited track key.');
+      if(key==='coordinate'?typeof val!=='boolean':!isOptInt(val,0,30)) throw Error('Invalid edited track value.');
+    }
+  }
+  if(edit.news!==undefined&&(!Array.isArray(edit.news)||edit.news.length>2||edit.news.some(n=>!isPlainObject(n)||![1,2].includes(n.id)||!SPACE_IDS.includes(n.space)||n.owner!==null&&n.owner!==''&&!FACTIONS.includes(n.owner)))) throw Error('Invalid edited News.');
+  if(edit.sabotage!==undefined&&(!Array.isArray(edit.sabotage)||edit.sabotage.length>BORDERS.length||edit.sabotage.some(b=>!BORDERS.includes(b)))) throw Error('Invalid edited Sabotage.');
+  if(edit.issues!==undefined&&(!Array.isArray(edit.issues)||edit.issues.length!==3||edit.issues.some(x=>![null,'','r','s'].includes(x)))) throw Error('Invalid edited Issues.');
+  if(edit.held!==undefined) {
+    if(!isPlainObject(edit.held)) throw Error('Invalid edited Capabilities box.');
+    for(const f of ['r','s']) if(edit.held[f]!==undefined&&(!Array.isArray(edit.held[f])||edit.held[f].length>8||edit.held[f].some(cap=>!TYPES.includes(cap)))) throw Error('Invalid edited held Capabilities.');
+  }
+}
+function validateRow(row) {
+  if(!isPlainObject(row)) throw Error('Invalid command row.');
+  if(row.id!==undefined&&row.id!=='political'&&!isSpaceOrEmpty(row.id)) throw Error('Invalid command row space.');
+  if(!isSpaceOrEmpty(row.from)||!isSpaceOrEmpty(row.to)) throw Error('Invalid command row movement space.');
+  if(row.retreat!==undefined&&row.retreat!==null&&!isSpaceOrEmpty(row.retreat)) throw Error('Invalid command row retreat space.');
+  if(row.option!==undefined&&typeof row.option!=='string') throw Error('Invalid command row option.');
+  if(row.side!==undefined&&!['r','s','m'].includes(row.side)) throw Error('Invalid command row faction.');
+  if(row.direction!==undefined&&!['active','inactive','support','opposition'].includes(row.direction)) throw Error('Invalid command row direction.');
+  if(row.targets!==undefined&&typeof row.targets!=='string') throw Error('Invalid Terror target selection.');
+  if(row.defenders!==undefined&&!['s','g','both'].includes(row.defenders)) throw Error('Invalid Attack defender selection.');
+  if(row.casualty!==undefined&&!['active','inactive'].includes(row.casualty)) throw Error('Invalid Attack casualty order.');
+  if(row.attrition!==undefined&&!['active','inactive'].includes(row.attrition)) throw Error('Invalid Attack attrition order.');
+  if(row.capture!==undefined&&!isSpaceOrEmpty(row.capture)) throw Error('Invalid Message capture space.');
+  for(const key of ['offset','count','russian','boost','token','localCount','localRussian','activateCount']) if(!isOptInt(row[key],0,30)) throw Error('Invalid command row count.');
+  for(const key of ['shift','activeFirst','person','localActiveFirst']) if(row[key]!==undefined&&typeof row[key]!=='boolean') throw Error('Invalid command row flag.');
+  if(row.caps!==undefined&&(!Array.isArray(row.caps)||row.caps.length>8||row.caps.some(cap=>!TYPES.includes(cap)))) throw Error('Invalid command row Capabilities.');
+  if(row.sites!==undefined&&(!Array.isArray(row.sites)||row.sites.length>SPACE_IDS.length||row.sites.some(id=>!SPACE_IDS.includes(id)))) throw Error('Invalid Activism spaces.');
+  if(row.path!==undefined&&(!Array.isArray(row.path)||row.path.length>3||row.path.some(id=>!isSpaceOrEmpty(id)))) throw Error('Invalid Message path.');
+}
+function validateSpecial(special) {
+  if(!isPlainObject(special)) throw Error('Invalid Special Activity form.');
+  const allSpecials=new Set(Object.values(SPECIALS).flat());
+  if(special.name!==undefined&&special.name!==''&&!allSpecials.has(special.name)) throw Error('Invalid Special Activity name.');
+  if(!isOptInt(special.timing,0,SPACE_IDS.length+1)||!isOptInt(special.boost,0,30)||!isOptInt(special.token,0,2)) throw Error('Invalid Special Activity number.');
+  if(special.option!==undefined&&typeof special.option!=='string') throw Error('Invalid Special Activity option.');
+  if(!isSpaceOrEmpty(special.id)) throw Error('Invalid Special Activity space.');
+  if(special.border!==undefined&&special.border!==''&&!BORDERS.includes(special.border)) throw Error('Invalid Special Activity border.');
+  if(special.side!==undefined&&!['r','s'].includes(special.side)) throw Error('Invalid Special Activity side.');
+  if(special.sites!==undefined&&(!Array.isArray(special.sites)||special.sites.length>SPACE_IDS.length||special.sites.some(id=>!SPACE_IDS.includes(id)))) throw Error('Invalid Special Activity spaces.');
+  if(special.amounts!==undefined) {
+    if(!isPlainObject(special.amounts)) throw Error('Invalid Publish amounts.');
+    for(const [site,val] of Object.entries(special.amounts)) if(!SPACE_IDS.includes(site)||!isOptInt(val,0,10)) throw Error('Invalid Publish amount entry.');
+  }
+}
+function validateIntent(intent,game=null) {
+  if(!isPlainObject(intent)||typeof intent.type!=='string') throw Error('Invalid draft action.');
+  const allowedTypes=['start','reveal','enter','advance','german','revolt','propaganda','bot','human','resolve'];
+  if(!allowedTypes.includes(intent.type)) throw Error('Invalid draft action type.');
+  if(game) {
+    const expected=game.interrupt?'resolve':game.stage==='setup'?'start':game.stage==='turn'?(human(game,actor(game))?'human':'bot'):game.stage;
+    if(intent.type!==expected) throw Error('Draft action does not match the current stage.');
+    if(intent.type==='human'&&(!options(game).includes(intent.action)||intent.command!==undefined&&
+      (!COMMANDS[actor(game)]?.includes(intent.command)||game.phase===1&&['March','Attack'].includes(intent.command)))) {
+      throw Error('Invalid draft turn action or Command.');
+    }
+  }
+  if(intent.action!==undefined&&!['pass','limited','full','event'].includes(intent.action)) throw Error('Invalid draft turn action.');
+  const allCommands=new Set(Object.values(COMMANDS).flat());
+  if(intent.command!==undefined&&!allCommands.has(intent.command)) throw Error('Invalid draft command.');
+  for(const key of ['manual','guideCommand','skip','use','reduce','disc']) if(intent[key]!==undefined&&typeof intent[key]!=='boolean') throw Error('Invalid draft boolean flag.');
+  if(intent.side!==undefined&&!['light','dark','r','s'].includes(intent.side)) throw Error('Invalid draft side.');
+  if(intent.recordAction!==undefined&&!['pass','limited','full','event'].includes(intent.recordAction)) throw Error('Invalid draft eligibility choice.');
+  if(intent.choice!==undefined&&!['skip','remove','rally'].includes(intent.choice)) throw Error('Invalid draft revolt choice.');
+  if(intent.power!==undefined&&!['r','s'].includes(intent.power)) throw Error('Invalid draft power choice.');
+  if(intent.direction!==undefined&&!['lower','raise','support','opposition'].includes(intent.direction)) throw Error('Invalid draft direction.');
+  if(intent.beneficiary!==undefined&&intent.beneficiary!==''&&!['r','s'].includes(intent.beneficiary)) throw Error('Invalid draft beneficiary.');
+  if(intent.reward!==undefined&&!['resources','cube'].includes(intent.reward)) throw Error('Invalid draft reward.');
+  if(intent.cube!==undefined&&!['r','s'].includes(intent.cube)) throw Error('Invalid draft cube.');
+  if(!isSpaceOrEmpty(intent.space)||!isSpaceOrEmpty(intent.destination)) throw Error('Invalid draft space selection.');
+  for(const key of ['current','upcoming','card','count','issue','token','amount']) if(!isOptInt(intent[key],0,60)) throw Error('Invalid draft number.');
+  if(intent.note!==undefined&&(typeof intent.note!=='string'||intent.note.length>500)) throw Error('Invalid draft note.');
+  if(intent.edit!==undefined) validateEdit(intent.edit);
+  if(intent.rows!==undefined) {
+    const maxRows=SPACE_IDS.length+Number(intent.command==='Activism');
+    if(!Array.isArray(intent.rows)||intent.rows.length<1||intent.rows.length>maxRows) throw Error('Invalid draft command rows.');
+    for(const row of intent.rows) validateRow(row);
+  }
+  if(intent.special!==undefined) validateSpecial(intent.special);
+  if(intent.recycle!==undefined) {
+    if(!Array.isArray(intent.recycle)||intent.recycle.length>20) throw Error('Invalid draft recycle list.');
+    for(const item of intent.recycle) {
+      if(!isPlainObject(item)||!isSpaceOrEmpty(item.id)||typeof item.key!=='string'||!isOptInt(item.count,1,20)) throw Error('Invalid draft recycle entry.');
+    }
+  }
+  if(intent.plans!==undefined) {
+    if(!Array.isArray(intent.plans)||intent.plans.length>20) throw Error('Invalid draft Agitation plans.');
+    for(const plan of intent.plans) {
+      if(!isPlainObject(plan)||!isSpaceOrEmpty(plan.id)||!['shift','polarization','disc','cube'].includes(plan.kind)||!isOptInt(plan.steps,1,10)) throw Error('Invalid draft Agitation plan.');
+      if(plan.direction!==undefined&&!['support','opposition'].includes(plan.direction)) throw Error('Invalid draft Agitation direction.');
+      if(plan.side!==undefined&&!['r','s'].includes(plan.side)) throw Error('Invalid draft Agitation cube.');
+    }
+  }
+}
+function validateDraft(draft,game=null) {
+  if(!isPlainObject(draft)) throw Error('Invalid unfinished form.');
   if(draft.boardFilter!==undefined&&(typeof draft.boardFilter!=='string'||draft.boardFilter.length>100)) throw Error('Invalid board filter.');
-  if(draft.edit!==undefined&&(!draft.edit||typeof draft.edit!=='object'||Array.isArray(draft.edit))) throw Error('Invalid board edits.');
+  if(draft.boardScope!==undefined&&!['all','occupied','changed','nearby'].includes(draft.boardScope)) throw Error('Invalid board scope filter.');
+  if(draft.boardNear!==undefined&&!isSpaceOrEmpty(draft.boardNear)) throw Error('Invalid nearby space filter.');
+  if(draft.checkedItems!==undefined&&(!Array.isArray(draft.checkedItems)||draft.checkedItems.length>200||draft.checkedItems.some(x=>typeof x!=='string'||x.length>120))) throw Error('Invalid checklist state.');
+  if(draft.boardFaction!==undefined&&!['all','r','s','m','g','u','news'].includes(draft.boardFaction)) throw Error('Invalid faction or News filter.');
+  if(draft.edit!==undefined) validateEdit(draft.edit);
   if(draft.previewMode!==undefined&&!['turn','correct'].includes(draft.previewMode)) throw Error('Invalid pending preview.');
   if(draft.previewVersion!==undefined&&(typeof draft.previewVersion!=='string'||draft.previewVersion.length>40)) throw Error('Invalid pending preview version.');
-  if(draft.intent!==undefined&&(!draft.intent||typeof draft.intent!=='object'||Array.isArray(draft.intent)||typeof draft.intent.type!=='string')) throw Error('Invalid draft action.');
+  if(draft.intent!==undefined) validateIntent(draft.intent,game);
+  if(draft.turnForms!==undefined) {
+    if(!isPlainObject(draft.turnForms)) throw Error('Invalid saved turn forms.');
+    for(const [key,form] of Object.entries(draft.turnForms)) {
+      if(!['pass','limited','full','event'].includes(key)) throw Error('Invalid turn form key.');
+      validateIntent(form,game);
+      if(form.action!==key) throw Error('Saved form does not match its turn action.');
+    }
+  }
+  return draft;
+}
+function recoverDraft(draft,game=null) {
+  try {
+    validateDraft(draft,game);
+    return draft;
+  } catch {
+    if(!isPlainObject(draft)) return {};
+    const clean={};
+    if(typeof draft.boardFilter==='string'&&draft.boardFilter.length<=100) clean.boardFilter=draft.boardFilter;
+    if(['all','occupied','changed','nearby'].includes(draft.boardScope)) clean.boardScope=draft.boardScope;
+    if(isSpaceOrEmpty(draft.boardNear)&&draft.boardNear) clean.boardNear=draft.boardNear;
+    if(['all','r','s','m','g','u','news'].includes(draft.boardFaction)) clean.boardFaction=draft.boardFaction;
+    if(typeof draft.note==='string'&&draft.note.length<=500) clean.note=draft.note;
+    if(typeof draft.notes==='string') clean.notes=draft.notes;
+    try {
+      if(draft.edit!==undefined) {
+        validateEdit(draft.edit);
+        clean.edit=draft.edit;
+      }
+    } catch { /* Drop damaged board edit draft. */ }
+    try {
+      if(draft.intent!==undefined) {
+        validateIntent(draft.intent,game);
+        clean.intent=draft.intent;
+      }
+    } catch { /* Drop damaged turn intent draft. */ }
+    if(isPlainObject(draft.turnForms)) {
+      const forms={};
+      for(const [key,form] of Object.entries(draft.turnForms)) {
+        if(!['pass','limited','full','event'].includes(key)) continue;
+        try { validateIntent(form,game); if(form.action===key) forms[key]=form; }
+        catch { /* Keep the other saved action forms. */ }
+      }
+      if(Object.keys(forms).length) clean.turnForms=forms;
+    }
+    if(['turn','correct'].includes(draft.previewMode)&&((draft.previewMode==='turn'&&clean.intent)||(draft.previewMode==='correct'&&clean.edit))) {
+      clean.previewMode=draft.previewMode;
+      if(typeof draft.previewVersion==='string'&&draft.previewVersion.length<=40) clean.previewVersion=draft.previewVersion;
+    }
+    return clean;
+  }
 }
 function validateReport(report) {
   if(report==null) return;
@@ -3733,9 +4024,15 @@ function migrate(save) {
   return {active:campaign.id,campaigns:[campaign]};
 }
 function importCopies(collection,incoming) {
-  const copies=incoming.campaigns.map(entry=>({...clone(entry),id:id()}));
+  checkCampaignRoom(collection,incoming.campaigns.length);
+  const copies=incoming.campaigns.map(entry=>{
+    const copy=clone(entry);
+    copy.id=id();
+    copy.draft=recoverDraft(copy.draft,copy.game);
+    return copy;
+  });
   const index=incoming.campaigns.findIndex(c=>c.id===incoming.active);
-  return {active:copies[index]?.id??copies[0]?.id??collection.active,campaigns:[...collection.campaigns,...copies]};
+  return {...collection,active:copies[index]?.id??copies[0]?.id??collection.active,campaigns:[...collection.campaigns,...copies]};
 }
 function campaignSizes(collection) {
   return collection.campaigns.map(c=>[c.name,new TextEncoder().encode(JSON.stringify(c)).length]).sort((a,b)=>b[1]-a[1]);
@@ -3756,8 +4053,9 @@ function createStore(getStorage,locks) {
       expected=storage.getItem(STORAGE_KEY);
       const backup=readBackup(storage);
       try {
-        const collection=expected===null?emptyCollection():decode(expected);
-        return {collection,status:expected===null?'ready':'saved',backup:Boolean(backup)};
+        let recoveredDraft=false;
+        const collection=expected===null?emptyCollection():decode(expected,{onDraftRecovery:()=>{recoveredDraft=true;}});
+        return {collection,status:expected===null?'ready':'saved',backup:Boolean(backup),...(recoveredDraft?{recoveredDraft}: {})};
       } catch {
         rejected=expected;
         return {collection:emptyCollection(),status:'recovery',backup:Boolean(backup)};
@@ -3826,25 +4124,40 @@ function createStore(getStorage,locks) {
   };
 }
 
-return {SCHEMA,STORAGE_KEY,BACKUP_KEY,REJECTED_KEY,emptyCollection,newCampaign,activeCampaign,commitCampaign,stepHistory,checkpointCampaign,encode,encodeCampaign,decode,importCopies,campaignSizes,createStore};
+return {SCHEMA,STORAGE_KEY,BACKUP_KEY,REJECTED_KEY,MAX_CAMPAIGNS,emptyCollection,newCampaign,activeCampaign,addCampaign,renameCampaign,duplicateCampaign,commitCampaign,stepHistory,checkpointCampaign,encode,encodeCampaign,decode,validateDraft,recoverDraft,importCopies,campaignSizes,createStore};
 },
 "ui-board.js": function(require) {
-const {BORDERS, CAP_NAME, FACTIONS, ISSUE_LABELS, LABEL, MOOD, NAME, SPACE_IDS, SPACES, TYPES, borderName, pop, spaceName, town}=require("data.js");
+const {BORDERS, CAP_NAME, FACTIONS, ISSUE_LABELS, LABEL, MARK, MOOD, NAME, NEAR, SPACE_IDS, SPACES, TYPES, borderName, pop, spaceName, town}=require("data.js");
 const {cells, control, newsAt, pools, score, tracksResources}=require("model.js");
 const {EDIT_TRACKS}=require("editor.js");
+const {legalRail}=require("actions.js");
 const {btn, check, checks, escape, group, numeric, select, sides, spaceOptions}=require("ui-fields.js");
 
 const factionClass = f=>f??'none';
 const controlName=f=>f?NAME[f]+' Control':'Uncontrolled';
 const numberFormat=n=>n.toLocaleString('en-US');
+const signedMargin=n=>(n>0?'+':'')+String(n);
+function spaceOccupied(g,id) {
+  const b=g.board[id];
+  return MARK.some(k=>b[k]>0)||b.person||b.caps.r.length>0||b.caps.s.length>0||newsAt(g,id).length>0;
+}
 function scoreStrip(g) {
   const p=score(g), t=g.tracks;
-  const items=[['Polarization',t.pol,''],['Opposition + Admins',p.opp,'r'],['Senate Town Pop.',p.senate,'s'],
-    ['Issues + Networks + 1',p.politics,'m'],['Reds + Senate Cells',p.cellTrack,''],['Russian Vassalage',t.rV,'r'],['German Vassalage',t.sV,'s']];
-  return '<div class="score-strip">'+items.map(([label,value,f])=>'<div class="score '+factionClass(f)+'"><strong>'+escape(value)+'</strong><span>'+escape(label)+'</span></div>').join('')+'</div>';
+  const rCap=t.rV+t.pol, sCap=t.sV+t.pol;
+  const items=[
+    ['Polarization',t.pol,'','Track 0–10'],
+    ['Opposition + Admins',p.opp,'r','Goal 12+ · Vas + Pol '+rCap+' (max 5) · Margin '+signedMargin(p.margins.r)+(p.qualify.r?' · Goal met':'')],
+    ['Senate Town Pop.',p.senate,'s','Goal 4+ · Vas + Pol '+sCap+' (max 5) · Margin '+signedMargin(p.margins.s)+(p.qualify.s?' · Goal met':'')],
+    ['Issues + Networks + 1',p.politics,'m','Goal ≥ '+t.pol+' Polarization · Resources '+t.m+' (need 15+) · Margin '+signedMargin(p.margins.m)+(p.qualify.m?' · Goal met':'')],
+    ['Reds + Senate Cells',p.cellTrack,'',g.phase===1?'Red Revolt! at 27+ ('+p.cellTrack+'/27)':'Phase II in play'],
+    ['Russian Vassalage',t.rV,'r','With Pol: '+rCap+' (need ≤ 5)'],
+    ['German Vassalage',t.sV,'s','With Pol: '+sCap+' (need ≤ 5)']
+  ];
+  return '<div class="score-strip">'+items.map(([label,value,f,sub])=>'<div class="score '+factionClass(f)+'"><strong>'+escape(value)+'</strong><span>'+escape(label)+'</span>'+(sub?'<small class="threshold-note">'+escape(sub)+'</small>':'')+'</div>').join('')+'</div>'+
+    (g.humans.length===1?'<p class="quiet">Only bots can win before final scoring in solo play.</p>':'');
 }
 const statusText=(f,b)=>cells(b,f)?b[f+'A']+' active · '+b[f+'I']+(f==='m'?' underground':' inactive'):'—';
-function boardCards(g,subset=SPACE_IDS) {
+function boardCards(g,subset=SPACE_IDS,{changedIds=[],nearOrigin=null}={}) {
   return '<div class="board-grid">'+subset.map(id=>{
     const b=g.board[id], owner=control(b);
     const marks=[];
@@ -3852,23 +4165,56 @@ function boardCards(g,subset=SPACE_IDS) {
     if(b.person) marks.push('Personality');
     for(const side of ['r','s']) for(const cap of b.caps[side]) marks.push(NAME[side]+' '+(cap==='officer'?side==='r'?'Commander':'Jaeger':CAP_NAME[cap]));
     for(const news of newsAt(g,id)) marks.push('News '+news.id+' · '+(NAME[news.owner]??'unheld'));
-    return '<article class="space-card"><div class="line"><div><h3>'+escape(spaceName(id))+'</h3><p class="quiet">'+(town(id)?'Town':'Province')+' · Population '+pop(id)+'</p></div>'+
+    const badges=[];
+    if(changedIds.includes(id)) badges.push('Changed');
+    if(nearOrigin&&id===nearOrigin) badges.push('Origin');
+    else if(nearOrigin&&NEAR[nearOrigin]?.includes(id)) badges.push(legalRail(g,nearOrigin,id)?'Adjacent · Rail':'Adjacent');
+    return '<article class="space-card'+(changedIds.includes(id)?' changed-space':'')+'"><div class="line"><div><h3>'+escape(spaceName(id))+'</h3><p class="quiet">'+(town(id)?'Town':'Province')+' · Population '+pop(id)+(badges.length?' · '+escape(badges.join(' · ')):'')+'</p></div>'+
       btn('quick-correct','Correct',{value:id,kind:'subtle small'})+'</div><p class="space-mood"><span class="flag '+factionClass(owner)+'">'+escape(controlName(owner))+'</span><span>'+escape(MOOD[b.support+2])+'</span></p>'+
       '<div class="piece-list">'+FACTIONS.map(f=>'<div><span class="dot '+f+'"></span>'+escape(NAME[f])+' <strong>'+escape(statusText(f,b))+'</strong></div>').join('')+'</div>'+
       (marks.length?'<p class="quiet markers">'+escape(marks.join(' · '))+'</p>':'')+'</article>';
   }).join('')+'</div>';
 }
-function changeRows(rows) {
-  return '<div class="changes">'+rows.map(([name,before,after])=>'<div class="change"><span>'+escape(name)+'</span><span class="before">'+escape(before)+'</span><span class="arrow" aria-hidden="true">→</span><strong>'+escape(after)+'</strong></div>').join('')+'</div>';
+function changeRows(rows,{applied=false,checkedSet=new Set(),prefix=''}={}) {
+  return '<div class="changes">'+rows.map(([name,before,after],i)=>{
+    const key=prefix+':'+i+':'+name;
+    const isChecked=checkedSet.has(key);
+    return '<div class="change'+(isChecked?' checked-row':'')+'">'+
+      (applied?'<label class="check-inline"><input type="checkbox" data-check-item="'+escape(key)+'"'+(isChecked?' checked':'')+'><span>'+escape(name)+'</span></label>':'<span>'+escape(name)+'</span>')+
+      '<span class="before">'+escape(before)+'</span><span class="arrow" aria-hidden="true">→</span><strong>'+escape(after)+'</strong></div>';
+  }).join('')+'</div>';
 }
-function reportHtml(report,{applied=false}={}) {
+function checklistKeys(report) {
+  if(!report?.diff) return [];
+  const d=report.diff, keys=[];
+  for(const {id,rows} of d.spaces) {
+    rows.forEach(([name],i)=>keys.push('space:'+id+':'+i+':'+name));
+  }
+  d.tracks.forEach(([name],i)=>keys.push('track:'+i+':'+name));
+  return keys;
+}
+function reportHtml(report,{applied=false,checkedItems=[]}={}) {
   const d=report.diff;
-  return (d.spaces.length?'<div class="diff-spaces">'+d.spaces.map(({id,rows,control,position})=>'<article class="diff-space"><div class="line"><div><h4>'+escape(spaceName(id))+'</h4><span class="quiet">'+
-    (control[0]===control[1]?escape(control[1]):escape(control[0]+' → '+control[1]))+'</span></div>'+
-    (applied&&SPACES[id]?btn('quick-correct','Correct',{value:id,kind:'subtle small'}):'')+'</div>'+changeRows(rows.filter(x=>x[0]!=='Control'))+(position?.length?'<details class="inline"><summary>Full space position</summary>'+changeRows(position)+'</details>':'')+'</article>').join('')+'</div>':'')+
-    (d.tracks.length?'<details class="inline" '+(d.tracks.length<8?'open':'')+'><summary>Tracks and Available ('+d.tracks.length+')</summary>'+changeRows(d.tracks)+'</details>':'')+
+  const context=applied?'receipt':'preview';
+  const checkedSet=new Set(Array.isArray(checkedItems)?checkedItems:[]);
+  const allKeys=applied?checklistKeys(report):[];
+  const doneCount=allKeys.filter(k=>checkedSet.has(k)).length;
+  const toolbar=applied&&(d.spaces.length||d.tracks.length)?'<div class="checklist-bar no-print"><span class="quiet">Checked '+doneCount+' of '+allKeys.length+' adjustments</span>'+
+    '<div class="controls">'+btn('check-all-adjustments','Check all',{kind:'subtle small',disabled:doneCount===allKeys.length})+
+    btn('clear-adjustments','Reset checks',{kind:'subtle small',disabled:doneCount===0})+
+    btn('print-checklist','Print checklist',{kind:'subtle small'})+'</div></div>':'';
+  return toolbar+(d.spaces.length?'<div class="diff-spaces">'+d.spaces.map(({id,rows,control,position})=>{
+    const spaceKey='space:'+id;
+    const controlText=control[0]===control[1]?control[1]:applied?'':control[0]+' → '+control[1];
+    return '<article class="diff-space"><div class="line"><div><h4>'+escape(spaceName(id))+'</h4>'+
+      (controlText?'<span class="quiet">'+escape(controlText)+'</span>':'')+'</div>'+
+      (applied&&SPACES[id]?btn('quick-correct','Correct',{value:id,kind:'subtle small'}):'')+'</div>'+
+      changeRows(applied?rows:rows.filter(x=>x[0]!=='Control'),{applied,checkedSet,prefix:spaceKey})+
+      (position?.length?'<details class="inline full-space" data-detail-key="'+context+'-pos-'+escape(id)+'"><summary>Full space position</summary>'+changeRows(position)+'</details>':'')+'</article>';
+  }).join('')+'</div>':'')+
+    (d.tracks.length?'<details class="inline" data-detail-key="'+context+'-tracks" '+(d.tracks.length<8?'open':'')+'><summary>Tracks and Available ('+d.tracks.length+')</summary>'+changeRows(d.tracks,{applied,checkedSet,prefix:'track'})+'</details>':'')+
     (!d.spaces.length&&!d.tracks.length?'<p class="quiet">No pieces or tracks change in this step.</p>':'')+
-    (report.log.length?'<details class="inline why" '+(report.log.length<8?'open':'')+'><summary>'+ (applied?'Action record':'Decision and sequence')+'</summary><ul>'+report.log.map(line=>'<li>'+escape(line)+'</li>').join('')+'</ul></details>':'');
+    (report.log.length?'<details class="inline why" data-detail-key="'+context+'-log" '+(report.log.length<8?'open':'')+'><summary>'+ (applied?'Action record':'Decision and sequence')+'</summary><ul>'+report.log.map(line=>'<li>'+escape(line)+'</li>').join('')+'</ul></details>':'');
 }
 function editSpace(g,edit,id) {
   if(!SPACES[id]) return;
@@ -3893,20 +4239,20 @@ function editorHtml(g,edit,base,{defaultSpace=null}={}) {
     (fieldSet?'<div class="edit-space"><div class="line"><h3>'+escape(spaceName(active))+'</h3>'+btn('reset-edit-space','Reset space',{value:base+'|'+active,kind:'subtle small'})+'</div>'+
       '<div class="counter-grid">'+shownKeys.map(key=>numeric(LABEL[key],path+'.'+key,fieldSet[key],{max:key.endsWith('Prep')?1:key.endsWith('Terror')?2:20})).join('')+'</div>'+
       group(select('Support or Opposition',path+'.support',fieldSet.support,MOOD.map((name,i)=>[i-2,name]),{number:true})+check('Personality',path+'.person',fieldSet.person))+
-      '<details class="inline"><summary>Capabilities in '+escape(spaceName(active))+'</summary>'+
+      '<details class="inline" data-detail-key="'+escape(base+'-caps-'+active)+'"><summary>Capabilities in '+escape(spaceName(active))+'</summary>'+
       ['r','s'].map(f=>'<p class="quiet">'+NAME[f]+'</p>'+group(capEdit(path+'.caps.'+f,fieldSet.caps[f]))).join('')+'</details></div>':'')+
-    '<details class="inline"'+(edit.tracks?' open':'')+'><summary>Tracks and force boxes</summary><div class="counter-grid">'+EDIT_TRACKS.filter(key=>!['coordinate'].includes(key)&&(!FACTIONS.includes(key)||tracksResources(g,key))).map(key=>{
+    '<details class="inline" data-detail-key="'+escape(base+'-tracks')+'"'+(edit.tracks?' open':'')+'><summary>Tracks and force boxes</summary><div class="counter-grid">'+EDIT_TRACKS.filter(key=>!['coordinate'].includes(key)&&(!FACTIONS.includes(key)||tracksResources(g,key))).map(key=>{
       const max=({pol:10,rV:6,sV:6,rC:3,sC:3,rOut:20,sOut:20,mOut:6,gOut:6,uOut:6,rPow:20,sPow:20})[key]??30;
       return numeric(FACTIONS.includes(key)?LABEL[key]+' Resources':LABEL[key],base+'.tracks.'+key,edit.tracks?.[key]??g.tracks[key],{max});
     }).join('')+'</div>'+check('Coordinate marker',base+'.tracks.coordinate',edit.tracks?.coordinate??g.tracks.coordinate)+'</details>'+
-    '<details class="inline"><summary>News, Sabotage, Issues, and Capabilities box</summary>'+
+    '<details class="inline" data-detail-key="'+escape(base+'-markers')+'"><summary>News, Sabotage, Issues, and Capabilities box</summary>'+
     group([1,2].map(n=>{
       const token=edit.news?.find(x=>x.id===n)??(!edit.news?g.news.find(x=>x.id===n):null);
       return select('News '+n+' location',base+'.newsSlot.'+n+'.space',token?.space??'',spaceOptions(),{empty:'Available',refresh:true})+
         (token?select('News '+n+' holder',base+'.newsSlot.'+n+'.owner',token.owner??'',sides(FACTIONS),{empty:'Unheld'}):'');
     }).join(''))+
     checks('Sabotaged borders',base+'.sabotage',edit.sabotage??g.sabotage,BORDERS.map(key=>[key,borderName(key)]))+
-    group(ISSUE_LABELS.map((name,i)=>select(name,base+'.issues.'+i,edit.issues?.[i]??g.issues[i]??'',
+    group(ISSUE_LABELS.map((name,i)=>select(name,base+'.issues.'+i,(edit.issues?edit.issues[i]:g.issues[i])??'',
       [['','Unresolved'],['r','Red Resolved'],['s','White Resolved']])).join(''))+
     ['r','s'].map(f=>'<p class="quiet">'+NAME[f]+' Capabilities box</p>'+group(capEdit(base+'.held.'+f,edit.held?.[f]??g.held[f]))).join('')+'</details>';
 }
@@ -3922,18 +4268,18 @@ function availableTable(g) {
     '<span>'+escape(label)+' <strong>'+numberFormat(p[key])+'</strong></span>').join('')+'</div>';
 }
 
-return {scoreStrip,boardCards,reportHtml,editSpace,editorHtml,availableTable};
+return {spaceOccupied,scoreStrip,boardCards,checklistKeys,reportHtml,editSpace,editorHtml,availableTable};
 },
 "ui-fields.js": function(require) {
-const {BORDERS, EVENTS, FACTIONS, LABEL, NAME, NEAR, SPACE_IDS, TOWNS, borderName, eventName, spaceName}=require("data.js");
-const {cells, control, pools}=require("model.js");
-const {terrorOptions}=require("actions.js");
-const {legalCommands, legalSpecials}=require("human.js");
+const {BORDERS, EVENTS, FACTIONS, LABEL, MOOD, NAME, NEAR, SPACE_IDS, TOWNS, borderName, eventName, pop, spaceName, town}=require("data.js");
+const {capacity, cells, clone, control, countActive, personality, pools}=require("model.js");
+const {battleStrength, legalRail, rallySize, terrorOptions}=require("actions.js");
+const {legalCommands, legalSpecials, recycle, redsAgitation}=require("human.js");
 
 const escape = value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 const items = entries=>entries.map(item=>Array.isArray(item)?item:[item,item]);
-const btn = (action,title,{value='',kind='',disabled=false}={})=>
-  '<button type="button" class="button '+escape(kind)+'" data-action="'+escape(action)+'" data-value="'+escape(value)+'"'+(disabled?' disabled':'')+'>'+escape(title)+'</button>';
+const btn = (action,title,{value='',kind='',disabled=false,pressed=null}={})=>
+  '<button type="button" class="button '+escape(kind)+'" data-action="'+escape(action)+'" data-value="'+escape(value)+'"'+(pressed===null?'':' aria-pressed="'+pressed+'"')+(disabled?' disabled':'')+'>'+escape(title)+'</button>';
 const selected = (x,y)=>String(x)===String(y)?' selected':'';
 const field = (label,body)=>'<label class="field"><span>'+escape(label)+'</span>'+body+'</label>';
 function select(label,path,value,options,{empty=null,refresh=false,number=false}={}) {
@@ -3983,29 +4329,151 @@ function makeRow(g,cmd,f) {
   const from=SPACE_IDS.find(id=>cells(g.board[id],f))??'hel';
   return {from,to:cmd==='Attack'?from:NEAR[from][0],count:1,caps:[],russian:0,activeFirst:false,defenders:'s',boost:0,retreat:'',casualty:'active',attrition:'inactive'};
 }
+function estimateCommandSummary(g,f,intent,{limited=false}={}) {
+  const cmd=intent.command, rows=Array.isArray(intent.rows)?intent.rows:[], spec=intent.special??{};
+  let recycleInvalid=false;
+  if(intent.recycle?.length) {
+    const trial=clone(g);
+    try { recycle(trial,f,intent.recycle); g=trial; }
+    catch { recycleInvalid=true; }
+  }
+  const p=pools(g), activismSites=new Set();
+  let cost=0, earned=0, discount=cmd==='Rally'&&f==='m'?Math.max(0,g.tracks.pol-5):0;
+  for(const row of rows) {
+    if(cmd==='Rally') {
+      const c=1+((row.option??'cells')==='cells'?Math.max(0,Number(row.offset)||0):0);
+      cost+=Math.max(0,c-discount);
+      discount=Math.max(0,discount-c);
+    } else if(cmd==='Politics') cost+=1+Math.floor(g.tracks.pol/2);
+    else if(cmd==='Negotiate'||cmd==='Terror'||cmd==='Message') cost+=1;
+    else if(cmd==='Activism') {
+      if(row.option==='activate'||!activismSites.has(row.id)) cost++;
+      if(row.option==='agitate'&&g.board[row.id]) cost+=redsAgitation(g,row).cost;
+      if(row.option!=='activate') activismSites.add(row.id);
+    } else if(cmd==='March') cost+=Math.ceil(Math.max(1,Number(row.count)||1)/3);
+    else if(cmd==='Attack') cost+=(row.from===row.to?1:Math.ceil(Math.max(1,Number(row.count)||1)/3))+Math.max(0,Number(row.boost)||0);
+  }
+  if(!limited&&spec.name) {
+    if(spec.name==='Foreign Relations'&&spec.option==='lower') cost+=Math.max(1,Number(spec.boost)||0);
+    if(spec.name==='Political Event') earned+=(spec.sites??[]).length;
+    if(spec.name==='Publish') {
+      earned+=(spec.sites??[]).reduce((sum,id)=>sum+Number(town(id))+2*Math.max(0,Number(spec.amounts?.[id])||0),0);
+    }
+  }
+  const legalSpaces=SPACE_IDS.filter(id=>{
+    const b=g.board[id];
+    if(cmd==='Rally') return p[f]>0||(f!=='s'&&p[f==='r'?'admin':'network']>0&&cells(b,f)>=2&&capacity(b)>0)||(f==='m'&&b.network&&b.mA>0);
+    if(cmd==='Negotiate') return b.mI>0&&(b.rA>0||b.sA>0);
+    if(cmd==='Terror') return terrorOptions(g,id,f).length>0;
+    if(cmd==='Activism') return cells(b,f)>0||(f==='r'&&b.admin&&control(b)==='r');
+    if(cmd==='March'||cmd==='Message') return cells(b,f)>0;
+    if(cmd==='Attack') return cells(b,f)>0;
+    return false;
+  });
+  const availPieces=[NAME[f]+' Cells: '+p[f]+(intent.recycle?.length&&!recycleInvalid?' after returns':'')];
+  if(f==='r') availPieces.push('Admins: '+p.admin,'Russian Troops on map: '+SPACE_IDS.reduce((n,id)=>n+g.board[id].u,0),'Red Terror: '+p.rTerror);
+  if(f==='s') availPieces.push('White Terror: '+p.sTerror,'Prepared: '+p.prep);
+  if(f==='m') availPieces.push('Networks: '+p.network,'Personality: '+(personality(g)?spaceName(personality(g)):'Available'),'Cubes: Red '+p.rC+' / White '+p.sC);
+  const maxSpaces=limited||cmd==='Politics'?1:cmd==='Rally'&&f!=='m'?Math.max(2,g.tracks.pol):SPACE_IDS.length+Number(cmd==='Activism');
+  return {cost,earned,availableResources:g.tracks[f],legalSpaces,availPieces,maxSpaces,recycleInvalid};
+}
+function commandSummaryHtml(g,f,intent,limited) {
+  const summary=estimateCommandSummary(g,f,intent,{limited});
+  const command=intent.command;
+  const movement=['Attack','March','Message'].includes(command);
+  const spaces=summary.legalSpaces.map(spaceName).join(', ')||'None';
+  const candidateText=summary.legalSpaces.length===SPACE_IDS.length?'All '+SPACE_IDS.length+' spaces':spaces;
+  return '<div class="summary-line"><span>Estimated cost <strong>'+summary.cost+'</strong>'+(summary.earned?' · Estimated gain '+summary.earned:'')+
+    ' · Resources <strong>'+summary.availableResources+'</strong></span><span>Selections '+intent.rows.length+'/'+summary.maxSpaces+'</span></div>'+
+    '<p class="quiet">'+escape(summary.availPieces.join(' · '))+'</p>'+
+    (summary.recycleInvalid?'<p class="quiet">Check the pieces selected to return to Available.</p>':'')+
+    (command==='Politics'?'':'<p class="quiet">'+(movement?'Origins with friendly Cells':'Candidate spaces')+' · '+escape(candidateText)+'</p>');
+}
+function rowHelperText(g,f,cmd,row) {
+  if(cmd==='Rally'&&g.board[row.id]) {
+    const b=g.board[row.id], opt=row.option??'cells';
+    if(opt==='cells') {
+      const {n,modifier}=rallySize(b,f,Number(row.offset)||0);
+      return spaceName(row.id)+' ('+MOOD[b.support+2]+(b.rTerror+b.sTerror?', '+(b.rTerror+b.sTerror)+' Terror':'')+') · Places '+n+' Cell(s) · Max offset '+modifier+' · Row cost '+(1+(Number(row.offset)||0));
+    }
+    if(opt==='disc') return spaceName(row.id)+' · Has '+cells(b,f)+' friendly Cell(s) (need 2+) · Stacking room '+capacity(b);
+    if(opt==='hide') return spaceName(row.id)+' · Active Moderates: '+b.mA+' · Can hide up to '+(pop(row.id)+b.network);
+  }
+  if(cmd==='Attack'&&g.board[row.from]&&g.board[row.to]) {
+    const src=g.board[row.from], count=Math.min(Math.max(1,Number(row.count)||1),Math.max(1,cells(src,f)));
+    const moving=row.from!==row.to;
+    const target=g.board[row.to];
+    const defenders=f==='s'?['r','u']:row.defenders==='both'?['s','g']:[row.defenders==='g'?'g':'s'];
+    const movingCaps=row.caps??[];
+    const caps=moving?[...target.caps[f],...movingCaps]:movingCaps.length?movingCaps:src.caps[f];
+    const attackCount=count+(moving?Number(row.localCount)||0:0);
+    const russians=(Number(row.russian)||0)+(moving?Number(row.localRussian)||0:0);
+    const strength=battleStrength(g,{f,id:row.to,defenders,attackCount,russians,caps,boost:Number(row.boost)||0,bot:false});
+    const rowCost=(row.from===row.to?1:Math.ceil(count/3))+(Number(row.boost)||0);
+    const railHint=moving&&!legalRail(g,row.from,row.to)?' · No usable rail link':moving&&!movingCaps.includes('train')?' · Select a Train to move':'';
+    return 'Origin '+spaceName(row.from)+': '+src[f+'A']+' active, '+src[f+'I']+' inactive'+(f==='r'?', '+src.u+' Russian':'')+' · Estimated Strength '+strength+' · Cost '+rowCost+railHint;
+  }
+  if(cmd==='March'&&g.board[row.from]) {
+    const src=g.board[row.from], count=Math.max(1,Number(row.count)||1);
+    return 'Origin '+spaceName(row.from)+': '+src[f+'A']+' active, '+src[f+'I']+' inactive'+(f==='r'?', '+src.u+' Russian':'')+' · Row cost '+Math.ceil(count/3);
+  }
+  if(cmd==='Activism') {
+    if(row.option==='activate') {
+      const elig=SPACE_IDS.filter(id=>g.board[id][f+'I']>0);
+      return 'Active '+NAME[f]+' on map: '+countActive(g,f)+' · Eligible Inactive spaces ('+elig.length+'): '+(elig.map(spaceName).join(', ')||'none');
+    }
+    if(g.board[row.id]) {
+      const b=g.board[row.id];
+      if(row.option==='flip') return spaceName(row.id)+' · Max flips here: '+(b[f+'A']+Math.floor(b[f+'I']/2))+' · Enemy: '+b[(row.side??'s')+'A']+' active, '+b[(row.side??'s')+'I']+' inactive';
+      if(row.option==='calm') return spaceName(row.id)+' · Active friendly Cells: '+b[f+'A'];
+      if(row.option==='agitate') {
+        return spaceName(row.id)+' · Admin: '+b.admin+' · Control: '+(NAME[control(b)]??'None')+' · Extra Agitate cost '+redsAgitation(g,row).cost;
+      }
+    }
+  }
+  if(cmd==='Message'&&g.board[row.from]) {
+    const src=g.board[row.from], steps=(row.path??[]).filter(Boolean);
+    const maxThreat=steps.reduce((m,id)=>Math.max(m,g.board[id]?Math.max(g.board[id].rA,g.board[id].sA):0),0);
+    return 'Origin '+spaceName(row.from)+': '+src.mA+' active, '+src.mI+' underground'+(steps.length?' · Route max Capture threat: '+maxThreat:'');
+  }
+  if(cmd==='Negotiate'&&g.board[row.id]) {
+    const b=g.board[row.id];
+    return spaceName(row.id)+' · Underground Moderates: '+b.mI+' · Active Reds: '+b.rA+' · Active Senate: '+b.sA;
+  }
+  if(cmd==='Terror'&&row.id&&row.id!=='political'&&g.board[row.id]) {
+    const b=g.board[row.id];
+    return spaceName(row.id)+' · Active friendly: '+b[f+'A']+' · Removal cap: '+(g.tracks.pol>=6?2:1)+' · Terror markers here: '+(b.rTerror+b.sTerror)+'/2';
+  }
+  return '';
+}
 function commandRow(g,f,cmd,row,base) {
   const space=select('Space',base+'.id',row.id,spaceOptions(),{refresh:true});
+  const helper=rowHelperText(g,f,cmd,row);
+  const helperHtml='<p class="quiet row-hint" data-row-hint="'+escape(base)+'"'+(helper?'':' hidden')+'>'+escape(helper)+'</p>';
   if(cmd==='Rally') {
     const options=[['cells','Place Cells'],...(f==='r'?[['disc','Build Administration']]:f==='m'?[['disc','Build Network'],['hide','Hide Cells at a Network']]:[])];
-    return space+select('Rally option',base+'.option',row.option,options,{refresh:true})+(row.option==='cells'?numeric('Resources to offset',base+'.offset',row.offset,{max:4}):'');
+    const maxOffset=g.board[row.id]?rallySize(g.board[row.id],f).modifier:0;
+    return space+select('Rally option',base+'.option',row.option,options,{refresh:true})+
+      (row.option==='cells'?numeric('Resources to offset',base+'.offset',row.offset,{max:maxOffset}):'')+helperHtml;
   }
-  if(cmd==='Politics') return select('Political cube',base+'.side',row.side,cubeOptions);
-  if(cmd==='Negotiate') return space+select('Deactivate',base+'.side',row.side,sides(['r','s']));
+  if(cmd==='Politics') return select('Political cube',base+'.side',row.side,cubeOptions)+helperHtml;
+  if(cmd==='Negotiate') return space+select('Deactivate',base+'.side',row.side,sides(['r','s']))+helperHtml;
   if(cmd==='Activism') {
     const options=[['activate','Roll to Activate friendly Cells'],['flip','Flip enemy Cells'],['calm','Remove one Active friendly Cell'],...(f==='r'?[['agitate','Agitate at an Administration']]:[])];
     let detail='';
-    if(row.option==='activate') detail=checks('Eligible activation spaces',base+'.sites',row.sites,spaceOptions(SPACE_IDS.filter(id=>g.board[id][f+'I'])));
+    if(row.option==='activate') detail=checks('Spaces to Activate',base+'.sites',row.sites??SPACE_IDS.filter(id=>g.board[id][f+'I']),spaceOptions(SPACE_IDS.filter(id=>g.board[id][f+'I'])))+
+      numeric('Maximum Cells to Activate (0 uses the roll)',base+'.activateCount',row.activateCount??0,{max:6});
     if(row.option==='flip') detail=space+select('Enemy faction',base+'.side',row.side,sides(FACTIONS.filter(x=>x!==f)))+
       select('Flip status to',base+'.direction',row.direction,[['active','Active'],['inactive','Inactive / Underground']])+numeric('Cells',base+'.count',row.count,{min:1,max:20});
     if(row.option==='calm') detail=space;
     if(row.option==='agitate') detail=space+check('Shift one step toward Opposition',base+'.shift',row.shift);
-    return select('Activism option',base+'.option',row.option,options,{refresh:true})+detail;
+    return select('Activism option',base+'.option',row.option,options,{refresh:true})+detail+helperHtml;
   }
   if(cmd==='Terror') {
     const opts=row.id==='political'?[]:terrorOptions(g,row.id,f);
     const choice=row.id==='political'?select('Remove',base+'.side',row.side,cubeOptions):select('Casualties',base+'.targets',row.targets,
       opts.map(x=>[x.removed.join(','),x.removed.map(key=>LABEL[key]).join(' + ')]),{empty:'First legal target'});
-    return select('Space or display',base+'.id',row.id,[...spaceOptions(),['political','Political Display']],{refresh:true})+choice;
+    return select('Space or display',base+'.id',row.id,[...spaceOptions(),['political','Political Display']],{refresh:true})+choice+helperHtml;
   }
   if(cmd==='Message') {
     const path=row.path??[];
@@ -4016,14 +4484,15 @@ function commandRow(g,f,cmd,row,base) {
       route+=select('Step '+(i+1),base+'.path.'+i,path[i],spaceOptions(NEAR[previous]??[]),{empty:i===0?'Choose adjacent space':'Stop here',refresh:true});
     }
     return route+select('News to carry or collect',base+'.token',row.token,[[0,'None selected'],...g.news.map(n=>[n.id,'News '+n.id+' · '+spaceName(n.space)])],{number:true})+
-      check('Prefer an Active Cell',base+'.activeFirst',row.activeFirst)+check('Carry the Personality',base+'.person',row.person);
+      check('Prefer an Active Cell',base+'.activeFirst',row.activeFirst)+check('Carry the Personality',base+'.person',row.person)+helperHtml;
   }
   const source=g.board[row.from], target=g.board[row.to];
   const attack=cmd==='Attack', trainAttack=attack&&target&&row.from!==row.to;
   const destinations=attack?[row.from,...(NEAR[row.from]??[])]:NEAR[row.from]??[];
   const unique=[...new Set(source?.caps[f]??[])];
+  const destOpts=destinations.map(id=>[id,spaceName(id)+(id!==row.from&&legalRail(g,row.from,id)?' (Rail)':'')]);
   let html=select('Origin',base+'.from',row.from,spaceOptions(),{refresh:true})+
-    select(attack?'Target':'Destination',base+'.to',row.to,spaceOptions(destinations),{empty:'Choose a space',refresh:true})+
+    select(attack?'Target':'Destination',base+'.to',row.to,destOpts,{empty:'Choose a space',refresh:true})+
     numeric(trainAttack?'Cells moving by Train':'Friendly Cells',base+'.count',row.count,{min:1,max:20})+
     (f==='r'?numeric(trainAttack?'Russian Troops moving by Train':'Russian Troops',base+'.russian',row.russian,{max:6}):'')+
     check('Take Active Cells first',base+'.activeFirst',row.activeFirst);
@@ -4043,12 +4512,12 @@ function commandRow(g,f,cmd,row,base) {
     select('Casualty order',base+'.casualty',row.casualty,[['active','Active defending Cells first'],['inactive','Inactive defending Cells first']])+
     select('Take friendly attrition from',base+'.attrition',row.attrition??'inactive',[['inactive','Inactive attacking Cells first'],['active','Active attacking Cells first']])+
     select('Resolve a hit',base+'.retreat',row.retreat,[['','Engage'],...spaceOptions(NEAR[row.to]??[]).map(([id,name])=>[id,'Retreat to '+name])]);
-  return html;
+  return html+helperHtml;
 }
 function specialFields(g,f,s,base) {
   const selected=s.name;
   if(selected==='Political Event'||selected==='Publish') {
-    const legal=SPACE_IDS.filter(id=>selected==='Publish'?cells(g.board[id],'m')||g.board[id].network:g.board[id][f+'A']&&control(g.board[id])===f);
+    const legal=SPACE_IDS.filter(id=>selected==='Publish'?pop(id)>0&&(cells(g.board[id],'m')||g.board[id].network):g.board[id][f+'A']&&control(g.board[id])===f);
     return checks('Spaces',base+'.sites',s.sites??[],spaceOptions(legal))+
       (selected==='Publish'?(s.sites??[]).map(id=>numeric('Activate in '+spaceName(id),base+'.amounts.'+id,s.amounts?.[id]??0,{max:2})).join(''):'');
   }
@@ -4081,34 +4550,35 @@ function commandFields(g,f,intent,base,{limited=false}={}) {
   ensure(intent,'recycle',[]);
   if(!intent.special) resetSpecial(intent);
   const cmd=intent.command, rows=intent.rows, special=intent.special;
+  const summaryBar='<div class="form-summary" id="command-summary">'+commandSummaryHtml(g,f,intent,limited)+'</div>';
   const baseRows=select('Command',base+'.command',cmd,legalCommands(g,f),{refresh:true})+
     check('Resolve with the physical faction aid',base+'.manual',intent.manual,{refresh:true});
-  if(intent.manual) return baseRows+'<p class="quiet">Follow the faction aid, then enter the affected spaces and tracks in the app. This keeps your turn and board together.</p>';
+  if(intent.manual) return baseRows+'<p class="quiet">Follow the faction aid, then enter the affected spaces and tracks in the app.</p>';
   const rowsHtml=rows.map((row,i)=>'<div class="step-box"><div class="line"><strong>'+escape(cmd)+' '+(rows.length>1?i+1:'')+'</strong>'+
     (rows.length>1?btn('remove-row','Remove',{value:base+'|'+i,kind:'subtle small'}):'')+'</div>'+
     group(commandRow(g,f,cmd,row,base+'.rows.'+i))+'</div>').join('');
   const extras=(!limited&&cmd!=='Politics'?btn('add-row','Add '+(cmd==='March'||cmd==='Message'?'movement':'selection'),{value:base,kind:'subtle'}):'')+
     (cmd==='Negotiate'?check('Reduce Polarization',base+'.reduce',intent.reduce):'');
   let sa='';
-  if(!limited) sa='<details class="inline"'+(special.name?' open':'')+'><summary>Special Activity'+(special.name?' · '+escape(special.name):'')+'</summary>'+
+  if(!limited) sa='<details class="inline" data-detail-key="'+escape(base+'-sa')+'"'+(special.name?' open':'')+'><summary>Special Activity'+(special.name?' · '+escape(special.name):'')+'</summary>'+
     group(select('Activity',base+'.special.name',special.name,legalSpecials(g,f,cmd),{empty:'None',refresh:true})+
     (special.name?select('Timing',base+'.special.timing',special.timing,Array.from({length:rows.length+1},(_,i)=>[i,i===0?'Before Command':i===rows.length?'After Command':'After selection '+i]),{number:true}):'')+specialFields(g,f,special,base+'.special'))+'</details>';
-  const recycling='<details class="inline"'+(intent.recycle.length?' open':'')+'><summary>Return friendly pieces to Available</summary>'+
+  const recycling='<details class="inline" data-detail-key="'+escape(base+'-recycle')+'"'+(intent.recycle.length?' open':'')+'><summary>Return friendly pieces to Available</summary>'+
     '<p class="quiet">Use only when making pieces Available during this action (§1.4.2).</p>'+
     intent.recycle.map((row,i)=>group(select('Space',base+'.recycle.'+i+'.id',row.id,spaceOptions())+
       select('Piece',base+'.recycle.'+i+'.key',row.key,[f+'A',f+'I',...(f==='r'?['admin']:f==='m'?['network','person']:[])].map(x=>[x,LABEL[x]]))+
       numeric('Count',base+'.recycle.'+i+'.count',row.count,{min:1,max:20})+btn('remove-recycle','Remove',{value:base+'|'+i,kind:'subtle small'}))).join('')+
     btn('add-recycle','Add return',{value:base,kind:'subtle small'})+'</details>';
-  return baseRows+rowsHtml+extras+sa+recycling;
+  return baseRows+summaryBar+rowsHtml+extras+sa+recycling;
 }
 
-return {escape,btn,field,select,numeric,lineInput,check,checks,group,spaceOptions,sides,cubeOptions,sideOptions,eventOptions,ensure,makeRow,resetSpecial,commandFields};
+return {escape,btn,field,select,numeric,lineInput,check,checks,group,spaceOptions,sides,cubeOptions,sideOptions,eventOptions,ensure,makeRow,estimateCommandSummary,commandSummaryHtml,rowHelperText,resetSpecial,commandFields};
 },
 "ui-turn.js": function(require) {
 const { FACTIONS, ISSUE_LABELS, NAME, SPACE_IDS, TOWNS, eventName, spaceName}=require("data.js");
 const {cells, human, pools, tracksResources}=require("model.js");
 const {TURN_LABEL, actor, options}=require("sequence.js");
-const {capDestinations, capabilityChoice, eventPrompt, eventSides}=require("events.js");
+const {capAvailable, capDestinations, capabilityChoice, eventPrompt, eventSides}=require("events.js");
 const {agitationSpaces}=require("rounds.js");
 const {eventChoiceSpaces}=require("bot-events.js");
 const {availableTable, boardCards, editorHtml}=require("ui-board.js");
@@ -4174,7 +4644,7 @@ function eventSelect(g,intent,base,f) {
     ensure(intent,'cube',pools(g).rC?'r':'s');
     extra+=select('Political cube',base+'.cube',intent.cube,cubeOptions);
   }
-  if(c&&owner&&g.phase===2&&human(g,owner)) {
+  if(c&&owner&&capAvailable(g,c.cap)>0&&g.phase===2&&human(g,owner)) {
     const sites=capDestinations(g,owner,c.cap);
     if(sites.length>1) extra+=select('Place Capability',base+'.destination',intent.destination??'',spaceOptions(sites),{empty:'Choose a space'});
   }
@@ -4203,10 +4673,30 @@ function manual(g,draft,p) {
   }
   return '<p class="guided-badge">Tabletop procedure</p>'+(p.reason?'<p class="quiet">'+escape(p.reason)+'</p>':'')+'<p>'+escape(p.instruction)+'</p>'+
     (p.aid?'<p class="quiet">Use the boxed Solitaire Play Aid for the bot’s choice. The printed instruction takes precedence over the general priorities.</p>':'')+
-    (event&&!p.aid&&!human(g,p.f)?'<details class="inline"><summary>General bot Event priorities · §8.1.7</summary><p>Use a random draw for remaining choices. Reds favor Opposition and Reds Control. Senate favors Support and Senate Control. Moderates favor Neutral and Uncontrolled Population. Prefer Towns for Support and Opposition, target Active Reds or Senate and Underground Moderates, and use at most one matching disc or Prepared marker in a space.</p></details>':'')+
+    (event&&!p.aid&&!human(g,p.f)?'<details class="inline" data-detail-key="bot-event-priorities"><summary>General bot Event priorities · §8.1.7</summary><p>Use a random draw for remaining choices. Reds favor Opposition and Reds Control. Senate favors Support and Senate Control. Moderates favor Neutral and Uncontrolled Population. Prefer Towns for Support and Opposition, target Active Reds or Senate and Underground Moderates, and use at most one matching disc or Prepared marker in a space.</p></details>':'')+
     sidesHtml+(i.skip?'':guidedNote+editFor(draft,g,'intent.edit'))+
     (i.skip?'':group('<label class="field"><span>Tabletop note (optional)</span><input data-bind="intent.note" maxlength="380" value="'+escape(i.note??'')+'"></label>'))+
     previewButton(i.skip?'Preview continuation':'Preview recorded result');
+}
+function estimateAgitateCost(g,f,plans) {
+  let cost=0;
+  for(const plan of plans) {
+    const b=g.board[plan.id];
+    const steps=Math.max(1,Number(plan.steps)||1);
+    if(plan.kind==='disc'||plan.kind==='cube') cost+=1;
+    else {
+      if(f!=='m'&&b) cost+=b.rTerror+b.sTerror;
+      cost+=steps;
+    }
+  }
+  if(cost&&f!=='m') cost+=g.tracks[f==='s'?'rIssue':'sIssue'];
+  return cost;
+}
+function agitationSummaryHtml(g,f,plans) {
+  const cost=estimateAgitateCost(g,f,plans);
+  const spaces=agitationSpaces(g,f).map(spaceName);
+  return '<div class="summary-line"><span>Estimated cost <strong>'+cost+'</strong> · Resources <strong>'+g.tracks[f]+'</strong></span>'+
+    '<span>Qualifying spaces · '+escape(spaces.join(', ')||'None')+'</span></div>';
 }
 function pending(g,draft) {
   const p=g.interrupt, i=ensure(draft,'intent',{type:'resolve'});
@@ -4215,7 +4705,8 @@ function pending(g,draft) {
     const spaces=eventChoiceSpaces(g);
     const label=p.event===7?'Town or Province for the Reds Cell':'Space for Senate Crackdown';
     if(!spaces.includes(i.space)) i.space=spaces[0]??'';
-    return (spaces.length?group(select(label,'intent.space',i.space,spaceOptions(spaces))):'<p>There is no eligible space. Continue the Event.</p>')+
+    return (spaces.length?group(select(label,'intent.space',i.space,spaceOptions(spaces)))+
+      '<p class="quiet">Legal choices ('+spaces.length+') · '+escape(spaces.map(spaceName).join(', '))+'</p>':'<p>There is no eligible space. Continue the Event.</p>')+
       previewButton('Preview Event resolution');
   }
   if(p.kind==='news') {
@@ -4240,7 +4731,8 @@ function pending(g,draft) {
     ensure(i,'count',0);
     const max=Math.min(p.max,g.tracks[p.f==='r'?'sPow':'rPow']);
     if(i.count>max) i.count=max;
-    return group(numeric('Enemy prisoners to release', 'intent.count',i.count,{max}))+previewButton();
+    return group(numeric('Enemy prisoners to release', 'intent.count',i.count,{max}))+
+      '<p class="quiet">Available prisoners to release: 0 to '+max+'.</p>'+previewButton();
   }
   if(p.kind==='capabilities') {
     ensure(i,'space',p.choices[0]);
@@ -4258,7 +4750,8 @@ function pending(g,draft) {
   if(p.kind==='agitate') {
     const plans=ensure(i,'plans',[]), spaces=agitationSpaces(g,p.f);
     const list=[['shift',p.f==='m'?'Shift toward Neutral':'Shift Support / Opposition'],['polarization','Reduce Polarization'],...(p.f==='s'?[]:[['disc',p.f==='r'?'Build Administration':'Build Network']]),...(p.f==='m'?[['cube','Place political cube']]:[])];
-    return '<p class="quiet">Choose actions in resolution order. Resources are checked before the result can be applied.</p>'+
+    return '<div class="form-summary" id="agitation-summary">'+agitationSummaryHtml(g,p.f,plans)+'</div>'+
+      '<p class="quiet">Choose actions in resolution order. Resources are checked before the result can be applied.</p>'+
       plans.map((plan,n)=>{
         const base='intent.plans.'+n;
         return '<div class="step-box">'+group(select('Space',base+'.id',plan.id,spaceOptions(spaces),{empty:'Choose space'})+
@@ -4286,9 +4779,9 @@ function turnBody(g,draft) {
     return '<p>Match the board and cylinders to this setup. All starting Cells are symbol-side down.</p>'+
       '<ul class="setup-list">'+g.setupLog.map(x=>'<li>'+escape(x)+'</li>').join('')+
       '<li>Polarization 3, each Vassalage 3. Human Resources 5; bot Moderates 0. Ten Senate Cells, three Russian Troops and six German Troops begin Out of Play.</li></ul>'+
-      '<details class="inline"><summary>Physical board and Available Forces</summary>'+availableTable(g)+boardCards(g,SPACE_IDS.filter(id=>Object.values(g.board[id]).some(x=>typeof x==='number'&&x!==0)))+'</details>'+
-      '<details class="inline"><summary>Initial markers and boxes</summary><ul><li>Set all three Prepared markers aside and place the political cubes in the matching Available boxes.</li><li>Place both News markers and the Personality in Moderates Available.</li><li>Set Germany’s cylinder in its holding slot. Keep Coordinate off the board.</li><li>Mark Reds + Senate Cells at 13, Senate Town Population at 1, Opposition + Administrations at 3, and Issues + Networks + 1 at 1.</li></ul></details>'+
-      (g.mode==='physical'?'<details class="inline"><summary>Prepare the physical Event deck</summary><p>Build two 1917 and two 1918 piles. Each pile has five random year cards on top of four year cards shuffled with one Propaganda. Stack the two 1917 piles above the two 1918 piles. Set #24 aside. Enter the top two cards as you reveal them.</p></details>'+
+      '<details class="inline" data-detail-key="setup-board"><summary>Physical board and Available Forces</summary>'+availableTable(g)+boardCards(g,SPACE_IDS.filter(id=>Object.values(g.board[id]).some(x=>typeof x==='number'&&x!==0)))+'</details>'+
+      '<details class="inline" data-detail-key="setup-markers"><summary>Initial markers and boxes</summary><ul><li>Set all three Prepared markers aside and place the political cubes in the matching Available boxes.</li><li>Place both News markers and the Personality in Moderates Available.</li><li>Set Germany’s cylinder in its holding slot. Keep Coordinate off the board.</li><li>Mark Reds + Senate Cells at 13, Senate Town Population at 1, Opposition + Administrations at 3, and Issues + Networks + 1 at 1.</li></ul></details>'+
+      (g.mode==='physical'?'<details class="inline" data-detail-key="setup-deck"><summary>Prepare the physical Event deck</summary><p>Build two 1917 and two 1918 piles. Each pile has five random year cards on top of four year cards shuffled with one Propaganda. Stack the two 1917 piles above the two 1918 piles. Set #24 aside. Enter the top two cards as you reveal them.</p></details>'+
         group(select('Current Event','intent.current',i.current,opts.filter(([id])=>id<=21),{empty:'Choose first card',number:true})+
           select('Upcoming Event','intent.upcoming',i.upcoming,opts.filter(([id])=>id<=21),{empty:'Choose next card',number:true})):'<p class="quiet">The app will reveal the first two Event IDs from its seeded deck. Pull the matching physical cards when needed.</p>')+previewButton('Preview opening setup');
   }
@@ -4302,7 +4795,7 @@ function turnBody(g,draft) {
     if(!human(g,f)) {
       const i=ensure(draft,'intent',{type:'bot'});
       return '<p>Check the bot’s selected action and targets before changing the physical board.</p>'+
-        '<details class="inline"><summary>Tabletop resolution option</summary>'+
+        '<details class="inline" data-detail-key="bot-tabletop-option"><summary>Tabletop resolution option</summary>'+
         check('Resolve a bot Command using the boxed card','intent.guideCommand',i.guideCommand)+
         '<p class="quiet">Use this for a Train position or priority that depends on the printed map or a boxed instruction. The app still follows the bot’s Event and Pass priorities.</p></details>'+
         previewButton('Preview '+NAME[f]+' bot');
@@ -4310,7 +4803,7 @@ function turnBody(g,draft) {
     const i=ensure(draft,'intent',{type:'human',action:choices.includes('limited')?'limited':choices.find(x=>x!=='pass')??'pass'});
     const controls=choices.map(a=>btn('select-action',TURN_LABEL[a],{value:a,kind:i.action===a?'selected':'subtle'})).join('');
     return '<div class="action-options" aria-label="Available turn actions">'+controls+'</div>'+
-      (i.action==='event'?eventSelect(g,i,'intent',f):i.action==='pass'?'<p class="quiet">Gain one Resource (up to 30) and remain eligible for the upcoming card.</p>':commandFields(g,f,i,'intent',{limited:i.action==='limited'}))+
+      (i.action==='event'?eventSelect(g,i,'intent',f):i.action==='pass'?'<p class="quiet">Gain one Resource (up to 30) and remain eligible for the upcoming card. Current '+NAME[f]+' Resources: '+g.tracks[f]+'/30.</p>':commandFields(g,f,i,'intent',{limited:i.action==='limited'}))+
       previewButton(i.action==='pass'?'Preview Pass':'Preview changes');
   }
   const types={enter:'enter',advance:'advance',german:'german',revolt:'revolt',propaganda:'propaganda'};
@@ -4332,29 +4825,33 @@ function resourceRow(g) {
   return '<div class="resources">'+FACTIONS.map(f=>'<div><span class="dot '+f+'"></span>'+NAME[f]+' <strong>'+ (tracksResources(g,f)?g.tracks[f]:'—')+'</strong><small>'+ (human(g,f)?'Human':'Bot')+'</small></div>').join('')+'</div>';
 }
 
-return {turnStatus,sequenceHtml,turnBody,actionSummary,resourceRow};
+return {turnStatus,sequenceHtml,agitationSummaryHtml,turnBody,actionSummary,resourceRow};
 },
 "ui.js": function(require) {
-const {FACTIONS, NAME, SPACE_IDS, VERSION, spaceName}=require("data.js");
-const {boardDiff, clone, newGame}=require("model.js");
+const {FACTIONS, NAME, NEAR, SPACES, SPACE_IDS, VERSION, spaceName}=require("data.js");
+const {boardDiff, cells, clone, newGame, newsAt}=require("model.js");
 const {actor}=require("sequence.js");
 const {preview}=require("engine.js");
-const {STORAGE_KEY, activeCampaign, campaignSizes, checkpointCampaign, commitCampaign, createStore, decode, encode, encodeCampaign, importCopies, newCampaign, stepHistory}=require("storage.js");
-const {availableTable, boardCards, editSpace, editorHtml, reportHtml, scoreStrip}=require("ui-board.js");
-const {actionSummary, resourceRow, sequenceHtml, turnBody, turnStatus}=require("ui-turn.js");
-const {btn, check, checks, ensure, escape, group, lineInput, makeRow, numeric, resetSpecial, select}=require("ui-fields.js");
+const {STORAGE_KEY, activeCampaign, addCampaign, campaignSizes, checkpointCampaign, commitCampaign, createStore, decode, duplicateCampaign, encode, encodeCampaign, importCopies, newCampaign, recoverDraft, renameCampaign, stepHistory, validateDraft}=require("storage.js");
+const {availableTable, boardCards, checklistKeys, editSpace, editorHtml, reportHtml, scoreStrip, spaceOccupied}=require("ui-board.js");
+const {actionSummary, agitationSummaryHtml, resourceRow, sequenceHtml, turnBody, turnStatus}=require("ui-turn.js");
+const {btn, check, checks, commandSummaryHtml, ensure, escape, group, lineInput, makeRow, numeric, resetSpecial, rowHelperText, select, spaceOptions}=require("ui-fields.js");
 
 const root=document.getElementById('app');
 const store=createStore(()=>window.localStorage,globalThis.navigator.locks);
 const boot=store.open();
 let collection=boot.collection;
 let status=boot.status, backup=boot.backup, screen=collection.active?'turn':'campaigns', activePreview=null;
-let pendingWrite=null, changeSerial=0, writtenSerial=0, message='', faulty='', switchFocus=null, importInput=null;
+const recoveredMessage='Recovered saved campaign. Damaged form fields were cleared.';
+let pendingWrite=null, changeSerial=0, writtenSerial=0, message=boot.recoveredDraft?recoveredMessage:'', faulty='', switchFocus=null, importInput=null;
 let draftNew={name:'',humans:['r'],mode:'physical',seed:randomSeed(),checkpoint:true};
+let renameState={id:null,name:''}, exportedAt=collection.exportedAt;
 let showNew=!collection.active, confirm=null, remote=false;
 const entry=()=>activeCampaign(collection);
 const game=()=>entry()?.game;
 const focus=selector=>{switchFocus=selector;};
+const formatStamp=value=>new Date(value).toLocaleString();
+const foldName=value=>value.normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
 function randomSeed() {
   return globalThis.crypto?.getRandomValues?.(new Uint32Array(1))[0]??Math.floor(Math.random()*0x100000000);
 }
@@ -4385,40 +4882,114 @@ function storageAlert() {
 function changed() {
   changeSerial++;
   clearTimeout(pendingWrite);
-  // Write on each meaningful interaction. Use a short delay only for typing bursts.
   pendingWrite=setTimeout(()=>{void saveNow();},180);
   paintStatus();
 }
 async function saveNow(opts={}) {
   clearTimeout(pendingWrite);
   const serial=changeSerial;
-  const result=await store.save(collection,opts);
-  if(result.status==='saved') writtenSerial=Math.max(writtenSerial,serial);
+  const target=collection;
+  const stamp=serial!==writtenSerial?new Date().toISOString():target.savedAt;
+  const snapshot={...target,savedAt:stamp,exportedAt};
+  const result=await store.save(snapshot,opts);
+  if(target!==collection) return result;
+  if(result.status==='saved') {
+    if(stamp&&serial>=writtenSerial) collection.savedAt=stamp;
+    if(snapshot.exportedAt&&serial>=writtenSerial) collection.exportedAt=snapshot.exportedAt;
+    writtenSerial=Math.max(writtenSerial,serial);
+  }
   status=result.status;
   backup=result.backup;
   paintStatus();
   if(screen==='campaigns') paintBackup();
   return result;
 }
+function detailKey(el) {
+  return el.dataset.detailKey||el.id||(el.querySelector('summary')?.textContent?.trim().slice(0,120)??'');
+}
+function captureDomState() {
+  const openMap=new Map();
+  for(const el of root.querySelectorAll('details')) {
+    const key=detailKey(el);
+    if(key) openMap.set(key,el.open);
+  }
+  let activeSelector=null, selection=null;
+  const active=document.activeElement;
+  if(active&&root.contains(active)&&active!==root) {
+    if(active.dataset?.bind) activeSelector='[data-bind="'+CSS.escape(active.dataset.bind)+'"]';
+    else if(active.dataset?.list&&active.value!==undefined) activeSelector='[data-list="'+CSS.escape(active.dataset.list)+'"][value="'+CSS.escape(active.value)+'"]';
+    else if(active.dataset?.checkItem) activeSelector='[data-check-item="'+CSS.escape(active.dataset.checkItem)+'"]';
+    else if(active.dataset?.action) activeSelector='[data-action="'+CSS.escape(active.dataset.action)+'"]'+(active.dataset.value?'[data-value="'+CSS.escape(active.dataset.value)+'"]':'');
+    else if(active.id) activeSelector='#'+CSS.escape(active.id);
+    if(typeof active.selectionStart==='number'&&typeof active.selectionEnd==='number'&&active.type==='text') {
+      selection=[active.selectionStart,active.selectionEnd];
+    }
+  }
+  return {openMap,activeSelector,selection};
+}
+function restoreDomState({openMap,activeSelector,selection},sameScreen) {
+  if(sameScreen&&openMap.size) {
+    for(const el of root.querySelectorAll('details')) {
+      const key=detailKey(el);
+      if(key&&openMap.has(key)) el.open=openMap.get(key);
+    }
+  }
+  const targetSelector=switchFocus??(sameScreen?activeSelector:null);
+  switchFocus=null;
+  if(targetSelector) {
+    const target=root.querySelector(targetSelector);
+    if(target) {
+      target.focus({preventScroll:true});
+      if(selection&&typeof target.setSelectionRange==='function'&&target.type==='text') {
+        try {target.setSelectionRange(selection[0],selection[1]);} catch { /* Non-text input. */ }
+      }
+    }
+  }
+}
+function safeRenderSection(c) {
+  if(screen==='campaigns'||!c) return campaignHtml();
+  if(screen==='guide') return guideHtml();
+  const render=()=>screen==='board'?boardHtml(c.game):screen==='correct'?correctHtml(c.game,c.draft):turnHtml(c);
+  try {
+    validateDraft(c.draft,c.game);
+  } catch {
+    c.draft=recoverDraft(c.draft,c.game);
+    activePreview=null;
+    message=recoveredMessage;
+    changed();
+  }
+  try { return render(); }
+  catch {
+    screen='campaigns';
+    activePreview=null;
+    faulty='This view could not open. You can export the campaign from here.';
+    return campaignHtml();
+  }
+}
+let resetReceiptOpen=false;
 function refresh(next=null) {
+  const sameScreen=next===null||next===screen;
+  const domState=captureDomState();
+  if(resetReceiptOpen) {
+    for(const key of domState.openMap.keys()) {
+      if(key==='tabletop-checklist'||key.startsWith('receipt-')) domState.openMap.delete(key);
+    }
+    resetReceiptOpen=false;
+  }
   if(next) screen=next;
-  const c=entry(), g=c?.game, draft=c?.draft;
-  const section=screen==='campaigns'?campaignHtml():!c?campaignHtml():screen==='board'?boardHtml(g):screen==='correct'?correctHtml(g,draft):
-    screen==='guide'?guideHtml():turnHtml(c);
+  const c=entry();
+  const section=safeRenderSection(c);
   root.innerHTML='<header class="mast"><div class="top-line"><a href="#turn" data-action="screen" data-value="turn" class="wordmark"><span>ALL BRIDGES</span><span>BURNING</span></a>'+
     '<div class="header-meta"><span class="edition">Tabletop companion</span><span id="save-status" data-status="'+escape(status)+'" role="status">'+escape(statusLabel())+'</span></div></div>'+
     '<nav aria-label="Companion tabs">'+[['turn','Turn'],['board','Board'],['campaigns','Campaigns'],['guide','Guide']].map(([id,label])=>
       '<button type="button" data-action="screen" data-value="'+id+'"'+(screen===id||id==='board'&&screen==='correct'?' aria-current="page"':'')+(id==='board'&&!c?' disabled':'')+'>'+label+'</button>').join('')+'</nav></header>'+
-    '<main id="main"><div id="storage-alert">'+storageAlert()+'</div>'+
+    '<main id="main"'+(screen==='turn'&&c?.last?' class="print-receipt"':'')+'><div id="storage-alert">'+storageAlert()+'</div>'+
     (message?'<div class="notice" role="status">'+escape(message)+'</div>':'')+
     (faulty?'<div class="notice error" id="error-note" tabindex="-1" role="alert">'+escape(faulty)+'</div>':'')+
     section+'</main><footer><span>All Bridges Burning · COIN Volume X</span><span>v'+VERSION+' · English</span></footer>'+
     '<input type="file" id="import-file" accept=".json,application/json" hidden>';
   importInput=document.getElementById('import-file');
-  if(switchFocus) {
-    document.querySelector(switchFocus)?.focus({preventScroll:true});
-    switchFocus=null;
-  }
+  restoreDomState(domState,sameScreen);
 }
 function turnHtml(c) {
   const g=c.game;
@@ -4427,8 +4998,8 @@ function turnHtml(c) {
   return '<div class="turn-layout"><section class="turn-main"><div class="card context"><p class="eyebrow">'+escape(actionSummary(g))+'</p>'+sequenceHtml(g)+resourceRow(g)+'</div>'+
     '<section class="card action-card" id="action-card"><div class="section-title"><h1>'+escape(turnStatus(g))+'</h1></div>'+
     (activePreview?.screen==='turn'?previewHtml(activePreview.plan):turnBody(g,c.draft))+'</section>'+
-    (last?'<details class="card receipt" id="tabletop-checklist" '+(last.diff.spaces.length||last.diff.tracks.length?'open':'')+'><summary>Tabletop checklist · '+escape(last.title)+'</summary>'+
-      (last.diff.spaces.length||last.diff.tracks.length?'<p class="quiet">Match these counts and markers on the physical board before continuing.</p>':'')+reportHtml(last,{applied:true})+'</details>':'')+
+    (last?'<details class="card receipt" id="tabletop-checklist" data-detail-key="tabletop-checklist" '+(last.diff.spaces.length||last.diff.tracks.length?'open':'')+'><summary>Tabletop checklist · '+escape(last.title)+'</summary>'+
+      (last.diff.spaces.length||last.diff.tracks.length?'<p class="quiet">Match these counts and markers on the physical board before continuing.</p>':'')+reportHtml(last,{applied:true,checkedItems:c.draft.checkedItems??[]})+'</details>':'')+
     '</section><aside class="turn-side"><div class="card compact"><h2>Board tracks</h2>'+scoreStrip(g)+'</div>'+
     '<div class="card compact"><h2>History</h2><div class="button-stack">'+
     btn('undo',c.undo.length?'Undo · '+c.undo.at(-1).label:'Undo',{kind:'subtle',disabled:!c.undo.length})+
@@ -4443,13 +5014,35 @@ function previewHtml(plan) {
     '<div class="controls">'+btn('apply','Apply',{kind:'primary'})+btn('dismiss-preview','Back to choices',{kind:'subtle'})+'</div></section>';
 }
 function boardHtml(g) {
-  const filter=entry().draft.boardFilter??'';
-  const needle=filter.trim().toLocaleLowerCase();
-  const matches=SPACE_IDS.filter(id=>!needle||spaceName(id).toLocaleLowerCase().includes(needle));
+  const c=entry(), draft=c.draft;
+  const filter=draft.boardFilter??'';
+  const scope=draft.boardScope??'all';
+  const changedIds=[...new Set((c.last?.diff.spaces??[]).map(x=>x.id).filter(id=>Object.hasOwn(SPACES,id)))];
+  const nearOrigin=draft.boardNear||(changedIds[0]??'hel');
+  const faction=draft.boardFaction??'all';
+  const needle=foldName(filter.trim());
+  const matches=SPACE_IDS.filter(id=>{
+    if(needle&&!foldName(spaceName(id)).includes(needle)) return false;
+    const b=g.board[id];
+    if(faction==='news'&&!newsAt(g,id).length) return false;
+    if(['g','u'].includes(faction)&&!b[faction]) return false;
+    if(FACTIONS.includes(faction)&&!(cells(b,faction)||(faction==='r'?b.admin:faction==='m'?b.network:0))) return false;
+    if(scope==='occupied') return spaceOccupied(g,id);
+    if(scope==='changed') return changedIds.includes(id);
+    if(scope==='nearby') return id===nearOrigin||NEAR[nearOrigin]?.includes(id);
+    return true;
+  });
+  const scopes=[['all','All ('+SPACE_IDS.length+')'],['occupied','Occupied ('+SPACE_IDS.filter(id=>spaceOccupied(g,id)).length+')'],
+    ['changed','Last step ('+changedIds.length+')'],['nearby','Nearby']];
+  const scopeButtons='<div class="space-tabs" role="group" aria-label="Board space filters">'+scopes.map(([key,label])=>
+    btn('board-scope',label,{value:key,kind:scope===key?'selected small':'subtle small',pressed:scope===key})).join('')+'</div>';
+  const filters=group(select('Pieces to show','boardFaction',faction,[['all','All spaces'],...['r','s','m','g','u'].map(f=>[f,NAME[f]]),['news','News']],{refresh:true})+
+    (scope==='nearby'?select('Spaces adjacent to','boardNear',nearOrigin,spaceOptions(),{refresh:true}):''));
   return '<section class="card"><div class="line"><div><p class="eyebrow">'+escape(actionSummary(g))+'</p><h1>Board</h1></div>'+btn('quick-correct','Correct board',{kind:'subtle'})+'</div>'+
-    scoreStrip(g)+resourceRow(g)+'<details class="inline"><summary>Available Forces</summary>'+availableTable(g)+'</details></section>'+
+    scoreStrip(g)+resourceRow(g)+'<details class="inline" data-detail-key="board-available"><summary>Available Forces</summary>'+availableTable(g)+'</details></section>'+
     '<section class="card"><div class="line"><h2>Spaces</h2>'+lineInput('Find space','boardFilter',filter,{placeholder:'Name a space'})+'</div>'+
-    (matches.length?boardCards(g,matches):'<p class="quiet">No matching space.</p>')+'</section>';
+    scopeButtons+filters+
+    (matches.length?boardCards(g,matches,{changedIds,nearOrigin:scope==='nearby'?nearOrigin:null}):'<p class="quiet">No matching space.</p>')+'</section>';
 }
 function correctHtml(g,draft) {
   const edit=ensure(draft,'edit',{});
@@ -4461,11 +5054,18 @@ function campaignHtml() {
   const c=entry();
   const controls='<div class="controls">'+btn('new','New campaign',{kind:'primary'})+btn('import','Import save',{kind:'subtle'})+
     btn('export-all','Export all',{kind:'subtle',disabled:collection.campaigns.length===0})+'</div>';
-  const list=collection.campaigns.map(item=>'<div class="campaign-row"><div><strong>'+escape(item.name)+'</strong><p class="quiet">'+
-    escape(item.game.humans.map(f=>NAME[f]).join(' + '))+' · '+escape(actionSummary(item.game))+'</p></div>'+
-    '<div class="controls">'+btn('open-campaign',item.id===c?.id?'Resume':'Open',{value:item.id,kind:'subtle small'})+
-    btn('export-one','Export',{value:item.id,kind:'subtle small'})+
-    btn('ask-delete','Delete',{value:item.id,kind:'subtle small'})+'</div></div>').join('');
+  const list=collection.campaigns.map(item=>{
+    const isRenaming=renameState.id===item.id;
+    return '<div class="campaign-row"><div><strong>'+escape(item.name)+'</strong><p class="quiet">'+
+      escape(item.game.humans.map(f=>NAME[f]).join(' + '))+' · '+escape(actionSummary(item.game))+'</p>'+
+      (isRenaming?'<div class="rename-box">'+lineInput('Campaign name','rename.name',renameState.name,{max:100})+
+        '<div class="controls">'+btn('save-rename','Save name',{value:item.id,kind:'primary small'})+btn('cancel-rename','Cancel',{kind:'subtle small'})+'</div></div>':'')+
+      '</div><div class="controls">'+btn('open-campaign',item.id===c?.id?'Resume':'Open',{value:item.id,kind:'subtle small'})+
+      btn('start-rename','Rename',{value:item.id,kind:'subtle small'})+
+      btn('duplicate-campaign','Duplicate',{value:item.id,kind:'subtle small'})+
+      btn('export-one','Export',{value:item.id,kind:'subtle small'})+
+      btn('ask-delete','Delete',{value:item.id,kind:'subtle small'})+'</div></div>';
+  }).join('');
   const form=showNew?'<section class="card" id="new-campaign"><p class="eyebrow">Full campaign · Living Rules</p><h2>New campaign</h2>'+
     '<p>Choose one human faction for solitaire, or two humans and one bot. Use the physical Event deck or let the app reveal the card IDs.</p>'+
     group(lineInput('Campaign name','new.name',draftNew.name,{placeholder:'Finnish Civil War'})+
@@ -4473,7 +5073,7 @@ function campaignHtml() {
       numeric('Random seed','new.seed',draftNew.seed,{max:4294967295}))+checks('Human factions · choose one or two','new.humans',draftNew.humans,FACTIONS.map(f=>[f,NAME[f]]))+
     check('Keep a checkpoint after each Propaganda Round','new.checkpoint',draftNew.checkpoint)+
     '<div class="controls">'+btn('create','Create campaign',{kind:'primary'})+btn('randomize','New seed',{kind:'subtle'})+'</div></section>':'';
-  const checkpoint=c?.checkpoints.length?'<details class="inline"><summary>Campaign checkpoints · '+c.checkpoints.length+'</summary>'+
+  const checkpoint=c?.checkpoints.length?'<details class="inline" data-detail-key="campaign-checkpoints"><summary>Campaign checkpoints · '+c.checkpoints.length+'</summary>'+
     c.checkpoints.map((cp,i)=>'<div class="line checkpoint"><span>'+escape(cp.label)+'</span>'+btn('restore-checkpoint','Restore as new history step',{value:i,kind:'subtle small'})+'</div>').join('')+'</details>':'';
   const dialog=confirm?'<div class="notice warn"><strong>'+escape(confirm.text)+'</strong><div class="controls">'+btn('confirm','Confirm',{kind:'primary'})+btn('cancel-confirm','Cancel',{kind:'subtle'})+'</div></div>':'';
   return '<section class="card"><div class="section-title"><h1>Campaigns</h1></div>'+controls+dialog+(list?'<div class="campaign-list">'+list+'</div>':'<p class="quiet">Start a campaign or import a saved one.</p>')+checkpoint+'</section>'+
@@ -4481,22 +5081,25 @@ function campaignHtml() {
 }
 function backupHtml() {
   const sizes=campaignSizes(collection);
+  const timestamps=[collection.savedAt?'Last saved '+formatStamp(collection.savedAt):null,exportedAt?'Last exported '+formatStamp(exportedAt):null].filter(Boolean).join(' · ');
   const recovery='<div class="controls">'+
     ((status==='conflict'||status==='unavailable'||status==='full')?btn('retry','Retry save',{kind:'subtle'}):'')+
     (status==='conflict'?btn('ask-reload','Load newer local save',{kind:'subtle'}):'')+
     (status==='recovery'||store.hasArchived()?btn('download-recovery','Export unreadable original',{kind:'subtle'}):'')+
     (backup?btn('copy-backup',status==='recovery'?'Restore previous save':'Import previous save as copies',{kind:'subtle'}):'')+
     (status==='recovery'?btn('replace-recovery','Use this workspace as the active save',{kind:'subtle'}):'')+'</div>';
-  return '<h2>Save and backup</h2><p id="backup-state">'+(backup?'Previous local save available':'No previous local save')+'</p>'+
+  return '<h2>Save and backup</h2><p id="backup-state">'+(backup?'Previous local save available':'No previous local save')+(timestamps?' · '+escape(timestamps):'')+'</p>'+
     '<p class="quiet">Exports include the board, eligibility, unfinished choices, and random state. Import adds copies to this browser.</p>'+recovery+
-    (sizes.length?'<details class="inline"><summary>Local campaign sizes</summary>'+sizes.map(([name,bytes])=>'<div class="line"><span>'+escape(name)+'</span><span>'+Math.ceil(bytes/1024)+' KB</span></div>').join('')+'</details>':'');
+    (sizes.length?'<details class="inline" data-detail-key="campaign-sizes"><summary>Local campaign sizes</summary>'+sizes.map(([name,bytes])=>'<div class="line"><span>'+escape(name)+'</span><span>'+Math.ceil(bytes/1024)+' KB</span></div>').join('')+'</details>':'');
 }
 function paintBackup() {
   const panel=document.getElementById('backup-panel');
   if(panel) {
+    const active=panel.contains(document.activeElement)?captureDomState():null;
     const open=panel.querySelector('details[open]');
     panel.innerHTML=backupHtml();
     if(open) panel.querySelector('details')?.setAttribute('open','');
+    if(active?.activeSelector) panel.querySelector(active.activeSelector)?.focus({preventScroll:true});
   }
 }
 function guideHtml() {
@@ -4522,6 +5125,10 @@ function getPath(path) {
   if(parts[0]==='new') {
     parts.shift();
     return [draftNew,parts];
+  }
+  if(parts[0]==='rename') {
+    parts.shift();
+    return [renameState,parts];
   }
   return [entry()?.draft,parts];
 }
@@ -4570,8 +5177,37 @@ function editBinding(path,value) {
   }
   return false;
 }
+function updateFormGuidance() {
+  const command=document.getElementById('command-summary');
+  const agitation=document.getElementById('agitation-summary');
+  if(!command&&!agitation) return;
+  const g=game(), intent=entry().draft.intent;
+  const f=g.interrupt?.f??actor(g);
+  if(command) {
+    command.innerHTML=commandSummaryHtml(g,f,intent,intent.action==='limited'||g.interrupt?.kind==='news');
+    for(const hint of root.querySelectorAll('[data-row-hint]')) {
+      const row=at(entry().draft,hint.dataset.rowHint.split('.'));
+      const text=rowHelperText(g,f,intent.command,row);
+      hint.textContent=text;
+      hint.hidden=!text;
+    }
+  }
+  if(agitation) agitation.innerHTML=agitationSummaryHtml(g,f,intent.plans);
+}
 function binding(e) {
-  const target=e.target, path=target.dataset.bind??target.dataset.list;
+  const target=e.target;
+  if(target.dataset?.checkItem) {
+    const c=entry();
+    if(!c) return;
+    const set=new Set(c.draft.checkedItems??[]);
+    if(target.checked) set.add(target.dataset.checkItem);
+    else set.delete(target.dataset.checkItem);
+    c.draft.checkedItems=[...set];
+    changed();
+    refresh();
+    return;
+  }
+  const path=target.dataset.bind??target.dataset.list;
   if(!path) return;
   const [obj,parts]=getPath(path);
   if(!obj) return;
@@ -4603,7 +5239,10 @@ function binding(e) {
   }
   if(path.includes('.rows.')&&['id','from','to'].includes(last)) {
     const row=at(obj,parts.slice(0,-1));
-    if(last==='id') row.targets='';
+    if(last==='id') {
+      if(obj.intent.command==='Terror') row.targets='';
+      if(obj.intent.command==='Rally') row.offset=0;
+    }
     if(last==='from') {
       row.caps=[];
       row.to='';
@@ -4620,15 +5259,11 @@ function binding(e) {
     const route=at(obj,parts.slice(0,-1));
     for(let i=Number(last)+1;i<route.length;i++) route[i]='';
   }
-  if(!path.startsWith('new.')) changed();
+  if(!path.startsWith('new.')&&!path.startsWith('rename.')) changed();
   if(Object.hasOwn(target.dataset,'refresh')||path==='boardFilter'||path.endsWith('.special.sites')) {
-    const selector=path==='boardFilter'?'[data-bind="boardFilter"]':null;
-    if(selector) focus(selector);
     refresh();
-    if(selector) {
-      const el=document.querySelector(selector);
-      el?.setSelectionRange(el.value.length,el.value.length);
-    }
+  } else if(path.startsWith('intent.')) {
+    updateFormGuidance();
   }
 }
 root.addEventListener('input',event=>{
@@ -4646,12 +5281,16 @@ function applyPlan() {
   const {after,title,log,diff}=plan;
   const cardChanged=old.current!==after.current&&old.stage!=='setup';
   after.changedSpaces=[...new Set([...(cardChanged?[]:old.changedSpaces??[]),...diff.spaces.map(x=>x.id)])];
-  // A correction can be made while a human form or an interruption is in progress.
   const beforeDraft=c.draft;
   commitCampaign(c,after,title,{title,log,diff});
+  resetReceiptOpen=true;
+  for(const key of ['boardFilter','boardScope','boardNear','boardFaction']) {
+    if(beforeDraft[key]!==undefined) c.draft[key]=beforeDraft[key];
+  }
   if(origin==='correct') {
     c.draft=clone(beforeDraft);
     delete c.draft.edit;
+    delete c.draft.checkedItems;
     clearPreviewDraft(c.draft);
   }
   if(after.checkpoint&&old.stage==='propaganda'&&old.roundStep==='reset') checkpointCampaign(c,'After Propaganda '+old.round);
@@ -4679,7 +5318,9 @@ function setPreview(intent,origin) {
   document.getElementById('preview-panel')?.scrollIntoView({block:'nearest'});
 }
 function recoverPreview(target=screen) {
-  const c=entry(), mode=c?.draft.previewMode;
+  const c=entry();
+  if(c) c.draft=recoverDraft(c.draft,c.game);
+  const mode=c?.draft.previewMode;
   if(!mode||target!==mode&&target!=='resume') return target==='resume'?'turn':target;
   if(c.draft.previewVersion!==VERSION) {
     clearPreviewDraft(c.draft);
@@ -4693,6 +5334,7 @@ function recoverPreview(target=screen) {
     return mode;
   } catch {
     clearPreviewDraft(c.draft);
+    c.draft=recoverDraft(c.draft,c.game);
     return target==='resume'?'turn':target;
   }
 }
@@ -4711,11 +5353,13 @@ const safeName=value=>String(value).toLowerCase().replace(/[^a-z0-9]+/g,'-').rep
 async function importFile(file) {
   try {
     if(file.size>16_000_000) throw Error('This save file is too large.');
-    const incoming=decode(await file.text());
+    let recoveredDraft=false;
+    const incoming=decode(await file.text(),{onDraftRecovery:()=>{recoveredDraft=true;}});
     if(!incoming.campaigns.length) throw Error('The file contains no campaigns.');
     collection=importCopies(collection,incoming);
     activePreview=null;
     message='Imported '+incoming.campaigns.length+' campaign '+(incoming.campaigns.length===1?'copy.':'copies.');
+    if(recoveredDraft) message+=' Damaged form fields were cleared.';
     faulty='';
     showNew=false;
     changed();
@@ -4740,11 +5384,12 @@ function doConfirm() {
   if(choice?.type==='reload') {
     const opened=store.open();
     collection=opened.collection;
+    exportedAt=collection.exportedAt;
     status=opened.status;
     backup=opened.backup;
     writtenSerial=changeSerial;
     remote=false;
-    message='Loaded the saved workspace.';
+    message=opened.recoveredDraft?recoveredMessage:'Loaded the saved workspace.';
   }
   if(choice?.type==='recover') {
     changed();
@@ -4763,7 +5408,7 @@ root.addEventListener('click',event=>{
   try {
     if(action==='screen') {
       activePreview=null;
-      if(c) void saveNow();
+      if(c&&changeSerial!==writtenSerial) void saveNow();
       refresh(value==='turn'&&!c?'campaigns':recoverPreview(value));
     } else if(action==='new') {
       showNew=true;
@@ -4775,9 +5420,7 @@ root.addEventListener('click',event=>{
     } else if(action==='create') {
       const state=newGame({...draftNew,seed:draftNew.seed===''?randomSeed():Number(draftNew.seed)});
       const name=draftNew.name.trim()||'Full Campaign · '+state.humans.map(f=>NAME[f]).join(' + ');
-      const campaign=newCampaign(name,state);
-      collection.campaigns.push(campaign);
-      collection.active=campaign.id;
+      addCampaign(collection,newCampaign(name,state));
       draftNew={...draftNew,name:'',seed:randomSeed()};
       showNew=false;
       changed();
@@ -4790,6 +5433,50 @@ root.addEventListener('click',event=>{
       changed();
       void saveNow();
       refresh(recoverPreview('resume'));
+    } else if(action==='start-rename') {
+      const target=collection.campaigns.find(x=>x.id===value);
+      if(!target) throw Error('Campaign not found.');
+      renameState={id:target.id,name:target.name};
+      focus('[data-bind="rename.name"]');
+      refresh('campaigns');
+    } else if(action==='save-rename') {
+      const target=collection.campaigns.find(x=>x.id===value);
+      if(!target) throw Error('Campaign not found.');
+      renameCampaign(target,renameState.name);
+      renameState={id:null,name:''};
+      message='Renamed campaign to '+target.name+'.';
+      changed();
+      void saveNow();
+      refresh('campaigns');
+    } else if(action==='cancel-rename') {
+      renameState={id:null,name:''};
+      refresh('campaigns');
+    } else if(action==='duplicate-campaign') {
+      const copy=duplicateCampaign(collection,value);
+      activePreview=null;
+      message='Duplicated campaign as '+copy.name+'.';
+      changed();
+      void saveNow();
+      refresh('campaigns');
+    } else if(action==='board-scope') {
+      c.draft.boardScope=value;
+      changed();
+      refresh('board');
+    } else if(action==='check-all-adjustments') {
+      c.draft.checkedItems=checklistKeys(c.last);
+      changed();
+      refresh();
+    } else if(action==='clear-adjustments') {
+      c.draft.checkedItems=[];
+      changed();
+      refresh();
+    } else if(action==='print-checklist') {
+      const checklist=document.getElementById('tabletop-checklist');
+      const sections=[checklist,...checklist.querySelectorAll('details[data-detail-key="receipt-tracks"]')];
+      const wasOpen=sections.map(el=>el.open);
+      sections.forEach(el=>{el.open=true;});
+      try { window.print?.(); }
+      finally { sections.forEach((el,index)=>{el.open=wasOpen[index];}); }
     } else if(action==='select-action') {
       const prior=c.draft.intent;
       c.draft.turnForms??={};
@@ -4814,6 +5501,8 @@ root.addEventListener('click',event=>{
         message=(action==='undo'?'Undid ':'Redid ')+label+'. Check the tabletop position.';
         const diff=boardDiff(previous,c.game);
         c.last={title:(action==='undo'?'Undo':'Redo')+' · '+label,log:[],diff};
+        delete c.draft.checkedItems;
+        resetReceiptOpen=true;
         changed();
         void saveNow();
       }
@@ -4861,11 +5550,15 @@ root.addEventListener('click',event=>{
     } else if(action==='export-one') {
       const item=collection.campaigns.find(x=>x.id===value);
       download(encodeCampaign(item),'abb-'+safeName(item.name)+'.json');
+      exportedAt=new Date().toISOString();
       message='Campaign export prepared.';
+      if(status==='saved'&&changeSerial===writtenSerial) { changed(); void saveNow(); }
       refresh();
     } else if(action==='export-all') {
       download(encode(collection),'abb-campaigns.json');
+      exportedAt=new Date().toISOString();
       message='Campaign collection export prepared.';
+      if(status==='saved'&&changeSerial===writtenSerial) { changed(); void saveNow(); }
       refresh();
     } else if(action==='import') importInput.click();
     else if(action==='retry') void saveNow();
@@ -4883,7 +5576,9 @@ root.addEventListener('click',event=>{
       const cp=c.checkpoints[Number(value)];
       const after=clone(cp.game), title='Restore '+cp.label;
       commitCampaign(c,after,title,{title,log:[],diff:boardDiff(g,after)});
-      c.draft=clone(cp.draft);
+      c.draft=recoverDraft(clone(cp.draft),c.game);
+      delete c.draft.checkedItems;
+      resetReceiptOpen=true;
       changed();
       void saveNow();
       refresh('turn');

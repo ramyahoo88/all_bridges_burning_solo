@@ -4,7 +4,7 @@ import {cubeColor, engage, putCube, rallyPlace, replaceWithDisc} from './actions
 import {chooseSpaceRanked, pick, pickSpace, roll} from './random.js';
 import {beginRevolt, endGermany, endPropaganda, endRevolt} from './sequence.js';
 import {capDestinations, placeCapability} from './events.js';
-import {botRally, placeRanked} from './bot-rally.js';
+import {botRally, nearest, placeRanked} from './bot-rally.js';
 
 const AGITATORS=['s','r','m'];
 const setPol=(g,n)=>g.tracks.pol=clamp(n,0,10);
@@ -330,13 +330,17 @@ export function germanAction(g,log) {
     if(landing) addNews(g,to);
     log.push('German '+(landing?'landing':'reinforcement')+' · '+available+' Troops to '+spaceName(to)+'.');
   } else {
-    const targets=existing.filter(id=>cells(g.board[id],'r')||g.board[id].u);
+    const enemies=SPACE_IDS.filter(id=>cells(g.board[id],'r')||g.board[id].u);
+    const targets=existing.filter(id=>enemies.includes(id));
     if(targets.length) {
       const id=placeRanked(g,targets,()=>[],log,'Germany: Attack Reds or Russians in the same space');
       engage(g,log,{f:'g',id,defenders:['r','u'],attackCount:0});
-    } else {
-      const moves=existing.flatMap(from=>NEAR[from].map(to=>({from,to})));
-      const move=chooseSpaceRanked(g,moves,({to})=>[cells(g.board[to],'r')?0:NEAR[to].some(id=>cells(g.board[id],'r'))?1:2],log,'Germany: March toward Reds Cells',x=>spaceName(x.from)+' → '+spaceName(x.to),x=>x.to);
+    } else if(enemies.length) {
+      const moves=existing.flatMap(from=>{
+        const currentDist=nearest(from,enemies);
+        return NEAR[from].filter(to=>nearest(to,enemies)<currentDist).map(to=>({from,to}));
+      });
+      const move=chooseSpaceRanked(g,moves,()=>[],log,'Germany: March toward Reds or Russians',x=>spaceName(x.from)+' → '+spaceName(x.to),x=>x.to);
       if(move) {
         g.board[move.to].g+=g.board[move.from].g;
         g.board[move.from].g=0;

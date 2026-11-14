@@ -1,7 +1,7 @@
 import { FACTIONS, ISSUE_LABELS, NAME, SPACE_IDS, TOWNS, eventName, spaceName} from './data.js';
 import {cells, human, pools, tracksResources} from './model.js';
 import {TURN_LABEL, actor, options} from './sequence.js';
-import {capDestinations, capabilityChoice, eventPrompt, eventSides} from './events.js';
+import {capAvailable, capDestinations, capabilityChoice, eventPrompt, eventSides} from './events.js';
 import {agitationSpaces} from './rounds.js';
 import {eventChoiceSpaces} from './bot-events.js';
 import {availableTable, boardCards, editorHtml} from './ui-board.js';
@@ -67,7 +67,7 @@ function eventSelect(g,intent,base,f) {
     ensure(intent,'cube',pools(g).rC?'r':'s');
     extra+=select('Political cube',base+'.cube',intent.cube,cubeOptions);
   }
-  if(c&&owner&&g.phase===2&&human(g,owner)) {
+  if(c&&owner&&capAvailable(g,c.cap)>0&&g.phase===2&&human(g,owner)) {
     const sites=capDestinations(g,owner,c.cap);
     if(sites.length>1) extra+=select('Place Capability',base+'.destination',intent.destination??'',spaceOptions(sites),{empty:'Choose a space'});
   }
@@ -96,10 +96,30 @@ function manual(g,draft,p) {
   }
   return '<p class="guided-badge">Tabletop procedure</p>'+(p.reason?'<p class="quiet">'+escape(p.reason)+'</p>':'')+'<p>'+escape(p.instruction)+'</p>'+
     (p.aid?'<p class="quiet">Use the boxed Solitaire Play Aid for the bot’s choice. The printed instruction takes precedence over the general priorities.</p>':'')+
-    (event&&!p.aid&&!human(g,p.f)?'<details class="inline"><summary>General bot Event priorities · §8.1.7</summary><p>Use a random draw for remaining choices. Reds favor Opposition and Reds Control. Senate favors Support and Senate Control. Moderates favor Neutral and Uncontrolled Population. Prefer Towns for Support and Opposition, target Active Reds or Senate and Underground Moderates, and use at most one matching disc or Prepared marker in a space.</p></details>':'')+
+    (event&&!p.aid&&!human(g,p.f)?'<details class="inline" data-detail-key="bot-event-priorities"><summary>General bot Event priorities · §8.1.7</summary><p>Use a random draw for remaining choices. Reds favor Opposition and Reds Control. Senate favors Support and Senate Control. Moderates favor Neutral and Uncontrolled Population. Prefer Towns for Support and Opposition, target Active Reds or Senate and Underground Moderates, and use at most one matching disc or Prepared marker in a space.</p></details>':'')+
     sidesHtml+(i.skip?'':guidedNote+editFor(draft,g,'intent.edit'))+
     (i.skip?'':group('<label class="field"><span>Tabletop note (optional)</span><input data-bind="intent.note" maxlength="380" value="'+escape(i.note??'')+'"></label>'))+
     previewButton(i.skip?'Preview continuation':'Preview recorded result');
+}
+function estimateAgitateCost(g,f,plans) {
+  let cost=0;
+  for(const plan of plans) {
+    const b=g.board[plan.id];
+    const steps=Math.max(1,Number(plan.steps)||1);
+    if(plan.kind==='disc'||plan.kind==='cube') cost+=1;
+    else {
+      if(f!=='m'&&b) cost+=b.rTerror+b.sTerror;
+      cost+=steps;
+    }
+  }
+  if(cost&&f!=='m') cost+=g.tracks[f==='s'?'rIssue':'sIssue'];
+  return cost;
+}
+export function agitationSummaryHtml(g,f,plans) {
+  const cost=estimateAgitateCost(g,f,plans);
+  const spaces=agitationSpaces(g,f).map(spaceName);
+  return '<div class="summary-line"><span>Estimated cost <strong>'+cost+'</strong> · Resources <strong>'+g.tracks[f]+'</strong></span>'+
+    '<span>Qualifying spaces · '+escape(spaces.join(', ')||'None')+'</span></div>';
 }
 function pending(g,draft) {
   const p=g.interrupt, i=ensure(draft,'intent',{type:'resolve'});
@@ -108,7 +128,8 @@ function pending(g,draft) {
     const spaces=eventChoiceSpaces(g);
     const label=p.event===7?'Town or Province for the Reds Cell':'Space for Senate Crackdown';
     if(!spaces.includes(i.space)) i.space=spaces[0]??'';
-    return (spaces.length?group(select(label,'intent.space',i.space,spaceOptions(spaces))):'<p>There is no eligible space. Continue the Event.</p>')+
+    return (spaces.length?group(select(label,'intent.space',i.space,spaceOptions(spaces)))+
+      '<p class="quiet">Legal choices ('+spaces.length+') · '+escape(spaces.map(spaceName).join(', '))+'</p>':'<p>There is no eligible space. Continue the Event.</p>')+
       previewButton('Preview Event resolution');
   }
   if(p.kind==='news') {
@@ -133,7 +154,8 @@ function pending(g,draft) {
     ensure(i,'count',0);
     const max=Math.min(p.max,g.tracks[p.f==='r'?'sPow':'rPow']);
     if(i.count>max) i.count=max;
-    return group(numeric('Enemy prisoners to release', 'intent.count',i.count,{max}))+previewButton();
+    return group(numeric('Enemy prisoners to release', 'intent.count',i.count,{max}))+
+      '<p class="quiet">Available prisoners to release: 0 to '+max+'.</p>'+previewButton();
   }
   if(p.kind==='capabilities') {
     ensure(i,'space',p.choices[0]);
@@ -151,7 +173,8 @@ function pending(g,draft) {
   if(p.kind==='agitate') {
     const plans=ensure(i,'plans',[]), spaces=agitationSpaces(g,p.f);
     const list=[['shift',p.f==='m'?'Shift toward Neutral':'Shift Support / Opposition'],['polarization','Reduce Polarization'],...(p.f==='s'?[]:[['disc',p.f==='r'?'Build Administration':'Build Network']]),...(p.f==='m'?[['cube','Place political cube']]:[])];
-    return '<p class="quiet">Choose actions in resolution order. Resources are checked before the result can be applied.</p>'+
+    return '<div class="form-summary" id="agitation-summary">'+agitationSummaryHtml(g,p.f,plans)+'</div>'+
+      '<p class="quiet">Choose actions in resolution order. Resources are checked before the result can be applied.</p>'+
       plans.map((plan,n)=>{
         const base='intent.plans.'+n;
         return '<div class="step-box">'+group(select('Space',base+'.id',plan.id,spaceOptions(spaces),{empty:'Choose space'})+
@@ -179,9 +202,9 @@ export function turnBody(g,draft) {
     return '<p>Match the board and cylinders to this setup. All starting Cells are symbol-side down.</p>'+
       '<ul class="setup-list">'+g.setupLog.map(x=>'<li>'+escape(x)+'</li>').join('')+
       '<li>Polarization 3, each Vassalage 3. Human Resources 5; bot Moderates 0. Ten Senate Cells, three Russian Troops and six German Troops begin Out of Play.</li></ul>'+
-      '<details class="inline"><summary>Physical board and Available Forces</summary>'+availableTable(g)+boardCards(g,SPACE_IDS.filter(id=>Object.values(g.board[id]).some(x=>typeof x==='number'&&x!==0)))+'</details>'+
-      '<details class="inline"><summary>Initial markers and boxes</summary><ul><li>Set all three Prepared markers aside and place the political cubes in the matching Available boxes.</li><li>Place both News markers and the Personality in Moderates Available.</li><li>Set Germany’s cylinder in its holding slot. Keep Coordinate off the board.</li><li>Mark Reds + Senate Cells at 13, Senate Town Population at 1, Opposition + Administrations at 3, and Issues + Networks + 1 at 1.</li></ul></details>'+
-      (g.mode==='physical'?'<details class="inline"><summary>Prepare the physical Event deck</summary><p>Build two 1917 and two 1918 piles. Each pile has five random year cards on top of four year cards shuffled with one Propaganda. Stack the two 1917 piles above the two 1918 piles. Set #24 aside. Enter the top two cards as you reveal them.</p></details>'+
+      '<details class="inline" data-detail-key="setup-board"><summary>Physical board and Available Forces</summary>'+availableTable(g)+boardCards(g,SPACE_IDS.filter(id=>Object.values(g.board[id]).some(x=>typeof x==='number'&&x!==0)))+'</details>'+
+      '<details class="inline" data-detail-key="setup-markers"><summary>Initial markers and boxes</summary><ul><li>Set all three Prepared markers aside and place the political cubes in the matching Available boxes.</li><li>Place both News markers and the Personality in Moderates Available.</li><li>Set Germany’s cylinder in its holding slot. Keep Coordinate off the board.</li><li>Mark Reds + Senate Cells at 13, Senate Town Population at 1, Opposition + Administrations at 3, and Issues + Networks + 1 at 1.</li></ul></details>'+
+      (g.mode==='physical'?'<details class="inline" data-detail-key="setup-deck"><summary>Prepare the physical Event deck</summary><p>Build two 1917 and two 1918 piles. Each pile has five random year cards on top of four year cards shuffled with one Propaganda. Stack the two 1917 piles above the two 1918 piles. Set #24 aside. Enter the top two cards as you reveal them.</p></details>'+
         group(select('Current Event','intent.current',i.current,opts.filter(([id])=>id<=21),{empty:'Choose first card',number:true})+
           select('Upcoming Event','intent.upcoming',i.upcoming,opts.filter(([id])=>id<=21),{empty:'Choose next card',number:true})):'<p class="quiet">The app will reveal the first two Event IDs from its seeded deck. Pull the matching physical cards when needed.</p>')+previewButton('Preview opening setup');
   }
@@ -195,7 +218,7 @@ export function turnBody(g,draft) {
     if(!human(g,f)) {
       const i=ensure(draft,'intent',{type:'bot'});
       return '<p>Check the bot’s selected action and targets before changing the physical board.</p>'+
-        '<details class="inline"><summary>Tabletop resolution option</summary>'+
+        '<details class="inline" data-detail-key="bot-tabletop-option"><summary>Tabletop resolution option</summary>'+
         check('Resolve a bot Command using the boxed card','intent.guideCommand',i.guideCommand)+
         '<p class="quiet">Use this for a Train position or priority that depends on the printed map or a boxed instruction. The app still follows the bot’s Event and Pass priorities.</p></details>'+
         previewButton('Preview '+NAME[f]+' bot');
@@ -203,7 +226,7 @@ export function turnBody(g,draft) {
     const i=ensure(draft,'intent',{type:'human',action:choices.includes('limited')?'limited':choices.find(x=>x!=='pass')??'pass'});
     const controls=choices.map(a=>btn('select-action',TURN_LABEL[a],{value:a,kind:i.action===a?'selected':'subtle'})).join('');
     return '<div class="action-options" aria-label="Available turn actions">'+controls+'</div>'+
-      (i.action==='event'?eventSelect(g,i,'intent',f):i.action==='pass'?'<p class="quiet">Gain one Resource (up to 30) and remain eligible for the upcoming card.</p>':commandFields(g,f,i,'intent',{limited:i.action==='limited'}))+
+      (i.action==='event'?eventSelect(g,i,'intent',f):i.action==='pass'?'<p class="quiet">Gain one Resource (up to 30) and remain eligible for the upcoming card. Current '+NAME[f]+' Resources: '+g.tracks[f]+'/30.</p>':commandFields(g,f,i,'intent',{limited:i.action==='limited'}))+
       previewButton(i.action==='pass'?'Preview Pass':'Preview changes');
   }
   const types={enter:'enter',advance:'advance',german:'german',revolt:'revolt',propaganda:'propaganda'};

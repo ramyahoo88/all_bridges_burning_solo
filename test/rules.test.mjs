@@ -17,6 +17,27 @@ const firstRoll=value=>{
   throw Error('No test seed found.');
 };
 
+test('§3.2.2: a player can use less than the roll while obeying even activation',()=>{
+  const g=position();
+  g.board.hel.rI=6;
+  g.board.uus.rI=1;
+  g.rng=firstRoll(4);
+  const after=preview(g,{type:'human',action:'limited',command:'Activism',
+    rows:[{option:'activate',sites:['hel','uus'],activateCount:2}]}).after;
+  assert.deepEqual([after.board.hel.rA,after.board.uus.rA,after.tracks.r],[1,1,4]);
+});
+
+test('§3.3.2: a cell that Messages and then Publishes cannot Message twice',()=>{
+  const g=position({humans:['m'],phase:2});
+  g.eligible=['m','r','s'];
+  g.board.hel.mI=1;
+  g.board.uus.network=1;
+  const intent={type:'human',action:'full',command:'Message',rows:[
+    {from:'hel',path:['uus']},{from:'uus',path:['ham'],activeFirst:true}
+  ],special:{name:'Publish',timing:1,sites:['uus'],amounts:{uus:1}}};
+  assert.throws(()=>preview(g,intent),/Cell that has not moved/);
+});
+
 // Expectations were transcribed from the cited rules and examples before checking the engine.
 test('Setup and §8.1.2: official inventory, fixed placement rolls, and human/bot resource setup',()=>{
   const g=newGame({seed:4,humans:['r']});

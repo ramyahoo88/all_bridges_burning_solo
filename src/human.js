@@ -1,6 +1,6 @@
 import {BORDERS, COMMANDS, NEAR, SPECIALS, SPACE_IDS, pop, spaceName, town} from './data.js';
 import { adjustResource, cells, cleanSpace, control, flip, newsAt, personality, pay, pools} from './model.js';
-import {engage, enemy, legalRail, placeCells, putCube, rallySize, replaceWithDisc, terrorAt, terrorOptions, travel} from './actions.js';
+import {createMoveState, engage, enemy, legalRail, placeCells, putCube, rallySize, recordGroupMove, recordMovedInto, replaceWithDisc, resolveMessageMove, terrorAt, terrorOptions, travel, unmovedCells, unmovedCount} from './actions.js';
 import { roll} from './random.js';
 
 const requireThat=(check,message)=>{if(!check) throw Error(message);};
@@ -35,7 +35,15 @@ export function recycle(g,f,plans) {
     cleanSpace(g,plan.id);
   }
 }
-function resolveSpecial(g,f,log,spec) {
+function activateModerates(b,id,count,movedInto) {
+  const moved=Math.max(0,count-unmovedCount(b,movedInto,id,'mI'));
+  flip(b,'m',true,count);
+  if(moved) {
+    movedInto[id].mI-=moved;
+    recordMovedInto(movedInto,id,'mA',moved);
+  }
+}
+function resolveSpecial(g,f,log,spec,movedInto) {
   const name=spec.name, id=spec.id, b=g.board[id], t=g.tracks;
   if(name==='Political Event') {
     const ids=list(spec.sites);
@@ -106,15 +114,16 @@ function resolveSpecial(g,f,log,spec) {
     requireThat(b?.mI,'Select a space with an Underground Moderates Cell.');
     if(spec.option==='shift') {
       requireThat(b.support!==0,'That space is already Neutral.');
+      activateModerates(b,id,1,movedInto);
       b.support-=Math.sign(b.support);
     } else {
       const side=spec.side;
       requireThat(['r','s'].includes(side)&&b[side+'I']&&pools(g).m&&
         (cells(b,side)>1||!b[side+'Prep']&&!b.caps[side].length&&!newsAt(g,id,side).length),'Select an Inactive enemy Cell that can be replaced without removing a marker or transferring News.');
+      activateModerates(b,id,1,movedInto);
       b[side+'I']--;
       b.mI++;
     }
-    flip(b,'m',true);
     return;
   }
   if(name==='Publish') {
@@ -124,10 +133,16 @@ function resolveSpecial(g,f,log,spec) {
       const b=g.board[site];
       requireThat(b&&pop(site)>0&&(cells(b,'m')||b.network),'Publish needs Population and a Moderates piece.');
       const n=integer(spec.amounts?.[site]??0,0,Math.min(b.mI,Number(b.person)+Number(b.network>0)),'Cells to Activate for Publish');
-      flip(b,'m',true,n);
+      activateModerates(b,site,n,movedInto);
       adjustResource(g,f,Number(town(site))+2*n);
     }
   }
+}
+export function redsAgitation(g,row) {
+  const space=g.board[row.id];
+  const shift=space.support>-2&&row.shift!==false;
+  const removeTerror=space.rTerror+space.sTerror>0;
+  return {shift,removeTerror,cost:Number(removeTerror)+Number(shift)+g.tracks.sIssue};
 }
 function orderRows(g,cmd,rows,f,limited) {
   requireThat(rows.length>0&&rows.length<=SPACE_IDS.length+Number(cmd==='Activism'),'Choose at least one action and stay within the space limit.');
@@ -152,24 +167,15 @@ export function applyHumanCommand(g,f,log,intent,{limited=false,free=false}={}) 
     !(rows.some(row=>row.option==='calm')&&rows.some(row=>row.option==='flip')),
     'Use at most one activation roll or Reds Agitation. Choose either calming friendly Cells or flipping enemy Cells.');
   if(cmd==='Activism'&&rows.some(row=>['activate','agitate'].includes(row.option))&&!['activate','agitate'].includes(rows.at(-1).option)) throw Error('Resolve Activism’s activation roll or Reds Agitation after its other selections.');
-  if(['March','Attack'].includes(cmd)) {
-    const seen=new Set();
-    for(const row of rows) {
-      const from=row.from??row.to;
-      requireThat(!seen.has(from)&&!seen.has(row.to),'Enter each movement group once and use each destination once. Record mixed or converging groups in the tabletop editor.');
-      seen.add(from);
-      seen.add(row.to);
-    }
-  }
+  const moveTracker=createMoveState();
   let discount=cmd==='Rally'&&f==='m'?Math.max(0,g.tracks.pol-5):0, addedTerror=0;
   let i=0;
   const fixedPol=g.tracks.pol;
-  const movedInto={};
   const activismSites=new Set();
   let negotiated=0;
   const timing=spec.name?integer(spec.timing??rows.length,0,rows.length,'Special Activity timing'):-1;
   for(const row of rows) {
-    if(i===timing) resolveSpecial(g,f,log,spec);
+    if(i===timing) resolveSpecial(g,f,log,spec,moveTracker.movedInto);
     i++;
     const b=g.board[row.id];
     if(cmd==='Rally') {
@@ -199,7 +205,6 @@ export function applyHumanCommand(g,f,log,intent,{limited=false,free=false}={}) 
       flip(b,'m',true);
       flip(b,row.side,false);
       negotiated++;
-
       log.push('Negotiate in '+spaceName(row.id)+'.');
     }
     if(cmd==='Terror') {
@@ -217,15 +222,20 @@ export function applyHumanCommand(g,f,log,intent,{limited=false,free=false}={}) 
     }
     if(cmd==='Activism') {
       if(row.option==='activate') {
+        const eligible=SPACE_IDS.filter(id=>g.board[id][f+'I']>0);
+        const choices=row.sites===undefined?eligible:list(row.sites);
+        requireThat(choices.length>0&&new Set(choices).size===choices.length&&choices.every(id=>eligible.includes(id)),'Choose spaces with Inactive friendly Cells.');
         pay(g,f,1,free);
         const value=roll(g,log,'Activism');
-        const choices=list(row.sites);
-        requireThat(new Set(choices).size===choices.length&&choices.every(id=>g.board[id]?.[f+'I']),'Choose spaces with Inactive friendly Cells.');
+        const requested=integer(row.activateCount??0,0,6,'maximum Cells to Activate')||value;
+        const max=Math.min(value,requested);
+        // A subset can take one Cell per space. A second pass requires every eligible space.
+        const limit=choices.length<eligible.length?Math.min(max,choices.length):max;
         let n=0, progress=true;
-        while(n<value&&progress) {
+        while(n<limit&&progress) {
           progress=false;
           for(const id of choices) {
-            if(n===value) break;
+            if(n===limit) break;
             if(flip(g.board[id],f,true)) {
               n++;
               progress=true;
@@ -245,10 +255,9 @@ export function applyHumanCommand(g,f,log,intent,{limited=false,free=false}={}) 
           cleanSpace(g,row.id);
         } else if(agitate) {
           requireThat(f==='r'&&b.admin&&control(b)==='r','Agitate in Reds Control with an Administration.');
-          const shift=b.support>-2&&row.shift!==false;
-          const removeTerror=b.rTerror+b.sTerror>0;
+          const {shift,removeTerror,cost}=redsAgitation(g,row);
           requireThat(shift||removeTerror,'Agitation must remove Terror or shift Opposition.');
-          pay(g,f,Number(removeTerror)+Number(shift)+g.tracks.sIssue);
+          pay(g,f,cost);
           b.rTerror=b.sTerror=0;
           if(shift) b.support--;
         } else {
@@ -265,22 +274,22 @@ export function applyHumanCommand(g,f,log,intent,{limited=false,free=false}={}) 
       const count=integer(row.count,1,cells(g.board[row.from]??{},f),'marching Cells');
       pay(g,f,Math.ceil(count/3),free);
       const russian=integer(row.russian??0,0,f==='r'?Math.min(count,g.board[row.from].u):0,'moving Russian Troops');
-      travel(g,f,row.from,row.to,{count,activeFirst:row.activeFirst,caps:list(row.caps),russian});
+      travel(g,f,row.from,row.to,{count,activeFirst:row.activeFirst,caps:list(row.caps),russian},moveTracker);
       log.push('March '+count+' from '+spaceName(row.from)+' to '+spaceName(row.to)+'.');
     }
-    if(cmd==='Attack') humanAttack(g,f,log,row,free);
+    if(cmd==='Attack') humanAttack(g,f,log,row,free,moveTracker);
     if(cmd==='Message') {
       pay(g,f,1,free);
-      humanMessage(g,log,row,movedInto);
+      humanMessage(g,log,row,moveTracker.movedInto);
     }
   }
   if(cmd==='Terror') g.tracks.pol=Math.min(10,g.tracks.pol+addedTerror);
   if(cmd==='Negotiate'&&intent.reduce!==false) g.tracks.pol=Math.max(0,g.tracks.pol-negotiated);
-  if(i===timing) resolveSpecial(g,f,log,spec);
+  if(i===timing) resolveSpecial(g,f,log,spec,moveTracker.movedInto);
   if(negotiated) log.push(negotiated+' enemy Cell(s) Deactivated.');
   if(spec.name) log.push('Special Activity · '+spec.name+' after '+timing+' Command row(s).');
 }
-function humanAttack(g,f,log,row,free) {
+function humanAttack(g,f,log,row,free,moveTracker) {
   const {from,to}=row;
   const source=g.board[from], b=g.board[to];
   requireThat(source&&b,'Choose Attack origin and target.');
@@ -300,9 +309,12 @@ function humanAttack(g,f,log,row,free) {
     attackCount+=localCount;
     inactive+=row.localActiveFirst?Math.max(0,localCount-b[f+'A']):Math.min(localCount,b[f+'I']);
     russians+=integer(row.localRussian??0,0,f==='r'?b.u:0,'attacking Russian Troops already at the target');
-    travel(g,f,from,to,{count,caps,russian,activeFirst:row.activeFirst});
-  } else for(const cap of new Set(caps)) {
-    requireThat(source.caps[f].filter(x=>x===cap).length>=caps.filter(x=>x===cap).length,'That Attack Capability is unavailable.');
+    travel(g,f,from,to,{count,caps,russian,activeFirst:row.activeFirst},moveTracker);
+  } else {
+    recordGroupMove(moveTracker,from,to);
+    for(const cap of new Set(caps)) {
+      requireThat(source.caps[f].filter(x=>x===cap).length>=caps.filter(x=>x===cap).length,'That Attack Capability is unavailable.');
+    }
   }
   pay(g,f,(from===to?1:Math.ceil(count/3))+boost,free);
   const retreat=row.retreat||null;
@@ -313,9 +325,10 @@ function humanAttack(g,f,log,row,free) {
 function humanMessage(g,log,row,movedInto) {
   const path=[row.from,...list(row.path).filter(Boolean)], source=g.board[path[0]];
   requireThat(source&&path.length>=2&&path.length<=4&&path.slice(1).every((id,i)=>NEAR[path[i]].includes(id)),'Choose a connected Message path of one to three steps.');
-  requireThat(cells(source,'m')>(movedInto[row.from]??0),'Select a Moderates Cell that has not moved.');
-  const key=row.activeFirst&&source.mA||!source.mI?'mA':'mI';
-  requireThat(source[key]>(movedInto[row.from+key]??0),'That Cell status has no unmoved Cell at the origin.');
+  requireThat(unmovedCells(source,movedInto,row.from,'m')>0,'Select a Moderates Cell that has not moved.');
+  const unmovedA=unmovedCount(source,movedInto,row.from,'mA'), unmovedI=unmovedCount(source,movedInto,row.from,'mI');
+  const key=row.activeFirst&&unmovedA>0||!unmovedI?'mA':'mI';
+  requireThat(unmovedCount(source,movedInto,row.from,key)>0,'That Cell status has no unmoved Cell at the origin.');
   const carryPerson=Boolean(row.person||source.person&&cells(source,'m')===1);
   const named=row.token?g.news.find(n=>n.id===Number(row.token)):null;
   const token=named??(cells(source,'m')===1&&!carryPerson?newsAt(g,row.from,'m')[0]:null);
@@ -323,29 +336,6 @@ function humanMessage(g,log,row,movedInto) {
   requireThat(!carryPerson||source.person,'The Personality is not at the origin.');
   requireThat(!(carryPerson&&token),'A Cell can carry the Personality or one News marker.');
   requireThat(!token||path.includes(token.space)&&(token.owner===null||token.owner==='m'&&token.space===row.from),'The News marker must be on the route, with no other holder.');
-  source[key]--;
-  let to=path.at(-1), captured=false;
-  if(token||carryPerson) {
-    const pickUp=token?path.indexOf(token.space):0;
-    const choices=path.slice(1).map((id,i)=>({id,dist:Math.abs(i+1-pickUp),threat:Math.max(g.board[id].rA,g.board[id].sA)})).sort((a,b)=>b.threat-a.threat||a.dist-b.dist);
-    const target=choices.find(x=>x.id===row.capture&&x.threat===choices[0].threat&&x.dist===choices[0].dist)??choices[0];
-    if(target.threat&&roll(g,log,'Message Capture in '+spaceName(target.id))<=target.threat) {
-      to=target.id;
-      captured=true;
-    }
-    if(token) {
-      token.space=to;
-      token.owner='m';
-    }
-    if(carryPerson) {
-      source.person=false;
-      g.board[to].person=true;
-    }
-  }
-  const status=captured?'mA':'mI';
-  g.board[to][status]++;
-  movedInto[to]=(movedInto[to]??0)+1;
-  movedInto[to+status]=(movedInto[to+status]??0)+1;
-  cleanSpace(g,row.from);
+  const {to,captured}=resolveMessageMove(g,log,{from:row.from,path,wasActive:key==='mA',token,carryPerson,captureSpace:row.capture,bot:false},movedInto);
   log.push('Message · '+spaceName(row.from)+' → '+spaceName(to)+(captured?' · Captured and Active.':'.'));
 }
