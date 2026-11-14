@@ -1,0 +1,31 @@
+{
+  "cases": [
+    {
+      "id": "F1",
+      "preview": "Strength 5; hits",
+      "afterHelsinki": {
+        "rI": 0,
+        "rA": 0,
+        "u": 2,
+        "g": 0
+      }
+    },
+    {
+      "id": "F3",
+      "preview": "Strength 4; misses",
+      "afterHelsinki": {
+        "rI": 3,
+        "rA": 0,
+        "u": 0,
+        "g": 0
+      }
+    },
+    {
+      "id": "F5",
+      "campaigns": 160,
+      "exportBytes": 16533228,
+      "result": "Export All downloaded successfully; importing that exact file was rejected."
+    }
+  ],
+  "chromium": "153.0.8010.0"
+}

@@ -1,0 +1,117 @@
+{
+  "auditedCommit": "b331ebab928d734d99cd086a30c4e944808eb066",
+  "findings": [
+    {
+      "id": "F1",
+      "expected": {
+        "reds": 1,
+        "russians": 1
+      },
+      "observed": {
+        "reds": 0,
+        "russians": 2
+      },
+      "log": [
+        "Attack in Helsinki · rolled 3",
+        "Helsinki · Strength 5; hits"
+      ]
+    },
+    {
+      "id": "F2",
+      "card": 58,
+      "expectedOrigin": "tam",
+      "log": [
+        "Attack: #58 group and target priorities · Helsinki",
+        "Attack in Helsinki · rolled 4",
+        "Helsinki · Strength 7; hits"
+      ]
+    },
+    {
+      "id": "F2",
+      "card": 52,
+      "expectedOrigin": "ham",
+      "log": [
+        "Attack: #52 group and target priorities · Helsinki",
+        "Attack in Helsinki · rolled 4",
+        "Helsinki · Strength 5; hits"
+      ]
+    },
+    {
+      "id": "F2",
+      "card": 53,
+      "expectedOrigin": "ham",
+      "log": [
+        "March: apply #53 movement and destination priorities · Uusimaa → Helsinki (3 Cells)"
+      ]
+    },
+    {
+      "id": "F3",
+      "faction": "s",
+      "expectedDefenderCells": 0,
+      "observedDefenderCells": 3,
+      "log": [
+        "Attack: #58 group and target priorities · Uusimaa → Helsinki",
+        "Attack in Helsinki · rolled 5",
+        "Helsinki · Strength 4; misses"
+      ]
+    },
+    {
+      "id": "F3",
+      "faction": "r",
+      "expectedDefenderCells": 2,
+      "observedDefenderCells": 3,
+      "log": [
+        "Attack: #52 group and target priorities · Uusimaa → Helsinki",
+        "Attack in Helsinki · rolled 1",
+        "Helsinki · Strength 0; misses"
+      ]
+    },
+    {
+      "id": "F4",
+      "expectedDestinations": 2,
+      "observedDestinations": 1,
+      "originCells": 6,
+      "log": [
+        "Prepare: repair closest to Senate Train · Helsinki / Uusimaa",
+        "#59 · Select March group · Uusimaa",
+        "March: apply #59 movement and destination priorities · Uusimaa → Helsinki (5 Cells)"
+      ]
+    },
+    {
+      "id": "F5",
+      "campaigns": 156,
+      "characters": 16086055,
+      "bytes": 16119907,
+      "result": "Save is missing or too large."
+    }
+  ],
+  "questions": [
+    {
+      "id": "Q1",
+      "condition": "all-issues-resolved",
+      "performed": false,
+      "newsRemaining": 1,
+      "polarization": 5,
+      "log": []
+    },
+    {
+      "id": "Q1",
+      "condition": "all-cubes-used",
+      "performed": false,
+      "newsRemaining": 1,
+      "polarization": 5,
+      "log": []
+    },
+    {
+      "id": "Q2",
+      "polarizationBefore": 3,
+      "polarizationAfter": 4,
+      "terrorBefore": 2,
+      "terrorAfter": 2,
+      "news": 1,
+      "log": [
+        "Helsinki · Strength 7; hits"
+      ]
+    }
+  ]
+}

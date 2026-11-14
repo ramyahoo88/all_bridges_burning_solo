@@ -40,6 +40,7 @@ To reproduce the interface checks, install Playwright for Python and its Chromiu
 - [Audit handoff and follow-up](CLAUDE_AUDIT.md)
 - [Claude audit of v0.10.1](docs/Claude_Audit_v0.10.1.md)
 - [Astra audit of v0.10.2](docs/Astra_Audit_v0.10.2.md)
+- [Astra second audit of v0.10.4](docs/Astra_Audit_v0.10.4.md) · five actionable issues, two rules questions, and reproducible evidence; application unchanged.
 - [Representative campaign saves](saves/)
 
 All Bridges Burning is designed by V.P.J. Arponen and published by GMT Games. This independent companion uses the tabletop components. The source implements rules and contains original interface text, card identifiers, and card titles.
